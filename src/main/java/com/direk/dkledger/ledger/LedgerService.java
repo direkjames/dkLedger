@@ -29,6 +29,7 @@ public final class LedgerService implements VaultProxy.Recorder {
     private final SourceResolver resolver;
     private final CommandTracker commands;
     private final TransferPairer pairer = new TransferPairer(2_000, 0.25);
+    private final Labels labels = new Labels(5_000);
     private final ConcurrentLinkedQueue<LedgerEntry> queue = new ConcurrentLinkedQueue<>();
     private final Set<String> newSources = ConcurrentHashMap.newKeySet();
     private final Map<UUID, String> names = new ConcurrentHashMap<>();
@@ -64,6 +65,11 @@ public final class LedgerService implements VaultProxy.Recorder {
 
     public Sources sources() {
         return sources;
+    }
+
+    /** Reasons other plugins attach to money changes (the dk suite reporting hook). */
+    public Labels labels() {
+        return labels;
     }
 
     public void rememberName(UUID uuid, String name) {
@@ -119,7 +125,7 @@ public final class LedgerService implements VaultProxy.Recorder {
                 else counterpart = pairer.received(source, player, amount, now);
             }
             LedgerEntry entry = new LedgerEntry(0, now, player, n, account, amount, source, detail == null ? "" : detail,
-                    counterpart, balance);
+                    counterpart, balance, labels.reasonFor(player, now));
             queue.add(entry);
             rollup.add(entry);
             newSources.add(source);
@@ -146,6 +152,7 @@ public final class LedgerService implements VaultProxy.Recorder {
                 if (err != null) plugin.getLogger().log(Level.SEVERE, "Couldn't save " + batch.size() + " ledger entries", err);
             });
         }
+        labels.forgetOld(System.currentTimeMillis());
         if (!newSources.isEmpty()) {
             Set<String> seen = new HashSet<>(newSources);
             newSources.removeAll(seen);

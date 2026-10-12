@@ -28,7 +28,7 @@ public final class DetectorService {
     private final LedgerStore store;
     private volatile Thresholds thresholds = Thresholds.defaults();
     private volatile ZoneId zone = ZoneId.systemDefault();
-    private volatile int keepDays = 30;
+    private volatile int keepDays = 90;
     private volatile long installed = System.currentTimeMillis();
     private long lastPrune;
 
@@ -56,7 +56,7 @@ public final class DetectorService {
         long now = System.currentTimeMillis();
         plugin.watchPastWarmup(now - installed > DAY);
         Map<String, Double> pricesNow = Bukkit.getPluginManager().isPluginEnabled("Lodestock") ? safePrices() : Map.of();
-        if (!pricesNow.isEmpty()) store.savePrices(now, pricesNow);
+        if (!pricesNow.isEmpty()) store.savePrices(now, LocalDate.now(zone).toString(), pricesNow);
         Thresholds t = thresholds;
         String today = LocalDate.now(zone).toString();
         String weekStart = LocalDate.now(zone).minusDays(6).toString();

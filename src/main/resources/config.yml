@@ -17,8 +17,9 @@ ledger:
   enabled: true
   # How often recorded changes are saved to the database.
   flush-seconds: 5
-  # Single changes are kept this long; daily totals and money supply snapshots are kept forever.
-  keep-entries-days: 30
+  # Single changes and item trades are kept this long (to look into a player or undo an exploit);
+  # daily totals, money supply snapshots, daily prices, playtime and progress are kept forever.
+  keep-entries-days: 90
   # How often everyone's money is counted and the hourly checks run.
   snapshot-minutes: 60
   # Wallets read per tick while counting (higher = faster count, more work per tick).
@@ -28,6 +29,19 @@ ledger:
   transfer-sources: ["Essentials /pay", "AxTrade", "AxAuctions", "ChestShop", "dkBank transfers"]
   # Sources that move money between a player's own wallet and bank: only their fees count.
   internal-sources: ["dkBank"]
+
+# ------------------------------------------------------------------ tracking
+# What's recorded besides money. All of it starts the moment a player joins, so later updates (player
+# profiles, new-player progression, inflation index, forecast) can use it from day one.
+tracking:
+  # Items bought and sold in shops: Lodestock and EconomyShopGUI, plus plugins that report through the API.
+  items: true
+  # Each player's first join, and minutes played per day (active and AFK).
+  playtime: true
+  # AFK = EssentialsX's AFK status. Without it, a player idle this many minutes counts as AFK (0 = never).
+  afk-after-minutes: 5
+  # Progress that isn't money: AOneBlock phases, dkBank tiers, plus plugins that report through the API.
+  progress: true
 
 # ------------------------------------------------------------------ alerts
 # Safe defaults. Each alert is a warning or critical; the same alert isn't repeated within repeat-hours

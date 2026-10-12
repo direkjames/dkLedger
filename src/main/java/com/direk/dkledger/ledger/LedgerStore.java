@@ -38,6 +38,13 @@ public final class LedgerStore {
     public static final String LOGINS = "dkledger_logins";
     public static final String PRICES = "dkledger_prices";
     public static final String META = "dkledger_meta";
+    public static final String REASON_DAILY = "dkledger_reason_daily";
+    public static final String TRADES = "dkledger_trades";
+    public static final String ITEM_DAILY = "dkledger_item_daily";
+    public static final String PRICE_DAILY = "dkledger_price_daily";
+    public static final String PLAYERS = "dkledger_players";
+    public static final String PLAYTIME = "dkledger_playtime";
+    public static final String EVENTS = "dkledger_events";
 
     private final Database db;
 
@@ -59,7 +66,14 @@ public final class LedgerStore {
         List<String> sql = new ArrayList<>();
         String entries = "CREATE TABLE IF NOT EXISTS " + ENTRIES + " (" + autoId() + ", time BIGINT NOT NULL, "
                 + "uuid VARCHAR(36) NOT NULL, name VARCHAR(16) NOT NULL, account VARCHAR(6) NOT NULL, amount DOUBLE NOT NULL, "
-                + "source VARCHAR(64) NOT NULL, detail VARCHAR(160) NOT NULL, other VARCHAR(36), balance DOUBLE";
+                + "source VARCHAR(64) NOT NULL, detail VARCHAR(160) NOT NULL, other VARCHAR(36), balance DOUBLE, "
+                + "reason VARCHAR(64) NOT NULL DEFAULT ''";
+        String trades = "CREATE TABLE IF NOT EXISTS " + TRADES + " (" + autoId() + ", time BIGINT NOT NULL, "
+                + "uuid VARCHAR(36) NOT NULL, name VARCHAR(16) NOT NULL, source VARCHAR(64) NOT NULL, item VARCHAR(48) NOT NULL, "
+                + "side VARCHAR(4) NOT NULL, quantity INT NOT NULL, money DOUBLE NOT NULL, detail VARCHAR(160) NOT NULL";
+        String events = "CREATE TABLE IF NOT EXISTS " + EVENTS + " (" + autoId() + ", time BIGINT NOT NULL, "
+                + "uuid VARCHAR(36) NOT NULL, name VARCHAR(16) NOT NULL, plugin VARCHAR(32) NOT NULL, type VARCHAR(32) NOT NULL, "
+                + "event_key VARCHAR(64) NOT NULL, value DOUBLE NOT NULL";
         String alerts = "CREATE TABLE IF NOT EXISTS " + ALERTS + " (" + autoId() + ", time BIGINT NOT NULL, "
                 + "check_id VARCHAR(8) NOT NULL, severity VARCHAR(8) NOT NULL, subject VARCHAR(80) NOT NULL, "
                 + "title VARCHAR(200) NOT NULL, detail TEXT NOT NULL, resolved BIGINT, resolved_by VARCHAR(32), note VARCHAR(200)";
@@ -69,6 +83,8 @@ public final class LedgerStore {
             sql.add(entries + ", INDEX idx_dkledger_entries_player (uuid, time), INDEX idx_dkledger_entries_time (time))");
             sql.add(alerts + ", INDEX idx_dkledger_alerts_time (time))");
             sql.add(notes + ", INDEX idx_dkledger_notes_player (uuid))");
+            sql.add(trades + ", INDEX idx_dkledger_trades_player (uuid, time), INDEX idx_dkledger_trades_time (time))");
+            sql.add(events + ", INDEX idx_dkledger_events_player (uuid, time), INDEX idx_dkledger_events_type (type, time))");
         } else {
             sql.add(entries + ")");
             sql.add("CREATE INDEX IF NOT EXISTS idx_dkledger_entries_player ON " + ENTRIES + " (uuid, time)");
@@ -77,6 +93,12 @@ public final class LedgerStore {
             sql.add("CREATE INDEX IF NOT EXISTS idx_dkledger_alerts_time ON " + ALERTS + " (time)");
             sql.add(notes + ")");
             sql.add("CREATE INDEX IF NOT EXISTS idx_dkledger_notes_player ON " + NOTES + " (uuid)");
+            sql.add(trades + ")");
+            sql.add("CREATE INDEX IF NOT EXISTS idx_dkledger_trades_player ON " + TRADES + " (uuid, time)");
+            sql.add("CREATE INDEX IF NOT EXISTS idx_dkledger_trades_time ON " + TRADES + " (time)");
+            sql.add(events + ")");
+            sql.add("CREATE INDEX IF NOT EXISTS idx_dkledger_events_player ON " + EVENTS + " (uuid, time)");
+            sql.add("CREATE INDEX IF NOT EXISTS idx_dkledger_events_type ON " + EVENTS + " (type, time)");
         }
         sql.add("CREATE TABLE IF NOT EXISTS " + DAILY + " (day VARCHAR(10) NOT NULL, source VARCHAR(64) NOT NULL, "
                 + "account VARCHAR(6) NOT NULL, gained DOUBLE NOT NULL, lost DOUBLE NOT NULL, entries INT NOT NULL, "
@@ -94,7 +116,41 @@ public final class LedgerStore {
         sql.add("CREATE TABLE IF NOT EXISTS " + PRICES + " (time BIGINT NOT NULL, item VARCHAR(48) NOT NULL, "
                 + "price DOUBLE NOT NULL, PRIMARY KEY (time, item))");
         sql.add("CREATE TABLE IF NOT EXISTS " + META + " (k VARCHAR(32) NOT NULL PRIMARY KEY, v VARCHAR(64) NOT NULL)");
-        return db.createTables(sql);
+        sql.add("CREATE TABLE IF NOT EXISTS " + REASON_DAILY + " (day VARCHAR(10) NOT NULL, source VARCHAR(64) NOT NULL, "
+                + "reason VARCHAR(64) NOT NULL, gained DOUBLE NOT NULL, lost DOUBLE NOT NULL, entries INT NOT NULL, "
+                + "PRIMARY KEY (day, source, reason))");
+        sql.add("CREATE TABLE IF NOT EXISTS " + ITEM_DAILY + " (day VARCHAR(10) NOT NULL, item VARCHAR(48) NOT NULL, "
+                + "source VARCHAR(64) NOT NULL, side VARCHAR(4) NOT NULL, trades INT NOT NULL, quantity BIGINT NOT NULL, "
+                + "money DOUBLE NOT NULL, PRIMARY KEY (day, item, source, side))");
+        sql.add("CREATE TABLE IF NOT EXISTS " + PRICE_DAILY + " (day VARCHAR(10) NOT NULL, item VARCHAR(48) NOT NULL, "
+                + "price DOUBLE NOT NULL, PRIMARY KEY (day, item))");
+        sql.add("CREATE TABLE IF NOT EXISTS " + PLAYERS + " (uuid VARCHAR(36) NOT NULL PRIMARY KEY, name VARCHAR(16) NOT NULL, "
+                + "first_join BIGINT NOT NULL, first_tracked BIGINT NOT NULL, last_seen BIGINT NOT NULL)");
+        sql.add("CREATE TABLE IF NOT EXISTS " + PLAYTIME + " (day VARCHAR(10) NOT NULL, uuid VARCHAR(36) NOT NULL, "
+                + "active_minutes INT NOT NULL, afk_minutes INT NOT NULL, sessions INT NOT NULL, PRIMARY KEY (day, uuid))");
+        return db.createTables(sql).thenCompose(v -> migrate());
+    }
+
+    /** Brings tables made by older versions up to date. */
+    private CompletableFuture<Void> migrate() {
+        return db.execute(c -> {
+            // 0.3.0: the reason other plugins give for a money change.
+            if (!hasColumn(c, ENTRIES, "reason")) {
+                try (Statement st = c.createStatement()) {
+                    st.executeUpdate("ALTER TABLE " + ENTRIES + " ADD COLUMN reason VARCHAR(64) NOT NULL DEFAULT ''");
+                }
+            }
+        });
+    }
+
+    private static boolean hasColumn(Connection c, String table, String column) throws SQLException {
+        try (Statement st = c.createStatement(); ResultSet rs = st.executeQuery("SELECT * FROM " + table + " WHERE 1 = 0")) {
+            var meta = rs.getMetaData();
+            for (int i = 1; i <= meta.getColumnCount(); i++) {
+                if (meta.getColumnName(i).equalsIgnoreCase(column)) return true;
+            }
+            return false;
+        }
     }
 
     // ------------------------------------------------------------------ writing the ledger
@@ -114,9 +170,15 @@ public final class LedgerStore {
                 : "INSERT INTO " + PLAYER_DAILY + " (day, uuid, name, earned, spent) VALUES (?, ?, ?, ?, ?) "
                 + "ON CONFLICT(day, uuid) DO UPDATE SET earned = earned + excluded.earned, spent = spent + excluded.spent, "
                 + "name = CASE WHEN excluded.name = '' THEN name ELSE excluded.name END";
+        String addReason = mysql()
+                ? "INSERT INTO " + REASON_DAILY + " (day, source, reason, gained, lost, entries) VALUES (?, ?, ?, ?, ?, ?) "
+                + "ON DUPLICATE KEY UPDATE gained = gained + VALUES(gained), lost = lost + VALUES(lost), entries = entries + VALUES(entries)"
+                : "INSERT INTO " + REASON_DAILY + " (day, source, reason, gained, lost, entries) VALUES (?, ?, ?, ?, ?, ?) "
+                + "ON CONFLICT(day, source, reason) DO UPDATE SET gained = gained + excluded.gained, "
+                + "lost = lost + excluded.lost, entries = entries + excluded.entries";
         return db.execute(c -> inTransaction(c, () -> {
             try (PreparedStatement ps = c.prepareStatement("INSERT INTO " + ENTRIES
-                    + " (time, uuid, name, account, amount, source, detail, other, balance) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                    + " (time, uuid, name, account, amount, source, detail, other, balance, reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
                 for (LedgerEntry e : entries) {
                     ps.setLong(1, e.time());
                     ps.setString(2, e.player().toString());
@@ -129,6 +191,7 @@ public final class LedgerStore {
                     else ps.setString(8, e.other().toString());
                     if (Double.isNaN(e.balance())) ps.setNull(9, Types.DOUBLE);
                     else ps.setDouble(9, e.balance());
+                    ps.setString(10, cut(e.reason(), 64));
                     ps.addBatch();
                 }
                 ps.executeBatch();
@@ -156,16 +219,37 @@ public final class LedgerStore {
                 }
                 ps.executeBatch();
             }
+            if (!rollup.reasons().isEmpty()) {
+                try (PreparedStatement ps = c.prepareStatement(addReason)) {
+                    for (RollupBuffer.ReasonDay r : rollup.reasons()) {
+                        ps.setString(1, r.day());
+                        ps.setString(2, cut(r.source(), 64));
+                        ps.setString(3, cut(r.reason(), 64));
+                        ps.setDouble(4, r.gained());
+                        ps.setDouble(5, r.lost());
+                        ps.setInt(6, r.entries());
+                        ps.addBatch();
+                    }
+                    ps.executeBatch();
+                }
+            }
         }));
     }
 
-    /** Deletes entries older than {@code before}. Daily totals and snapshots are kept forever. */
+    /**
+     * Deletes single entries, item trades and hourly prices older than {@code before}. Daily totals, snapshots,
+     * playtime and progress events are kept forever.
+     */
     public CompletableFuture<Integer> prune(long before) {
         return db.query(c -> {
             int removed;
             try (PreparedStatement ps = c.prepareStatement("DELETE FROM " + ENTRIES + " WHERE time < ?")) {
                 ps.setLong(1, before);
                 removed = ps.executeUpdate();
+            }
+            try (PreparedStatement ps = c.prepareStatement("DELETE FROM " + TRADES + " WHERE time < ?")) {
+                ps.setLong(1, before);
+                ps.executeUpdate();
             }
             try (PreparedStatement ps = c.prepareStatement("DELETE FROM " + PRICES + " WHERE time < ?")) {
                 ps.setLong(1, before);
@@ -249,7 +333,7 @@ public final class LedgerStore {
     /** A player's newest entries, newest first. */
     public CompletableFuture<List<LedgerEntry>> entries(UUID player, int limit, int offset) {
         return db.query(c -> {
-            try (PreparedStatement ps = c.prepareStatement("SELECT id, time, uuid, name, account, amount, source, detail, other, balance FROM "
+            try (PreparedStatement ps = c.prepareStatement("SELECT id, time, uuid, name, account, amount, source, detail, other, balance, reason FROM "
                     + ENTRIES + " WHERE uuid = ? ORDER BY id DESC LIMIT ? OFFSET ?")) {
                 ps.setString(1, player.toString());
                 ps.setInt(2, limit);
@@ -261,7 +345,7 @@ public final class LedgerStore {
 
     public CompletableFuture<Optional<LedgerEntry>> entry(long id) {
         return db.query(c -> {
-            try (PreparedStatement ps = c.prepareStatement("SELECT id, time, uuid, name, account, amount, source, detail, other, balance FROM "
+            try (PreparedStatement ps = c.prepareStatement("SELECT id, time, uuid, name, account, amount, source, detail, other, balance, reason FROM "
                     + ENTRIES + " WHERE id = ?")) {
                 ps.setLong(1, id);
                 List<LedgerEntry> list = readEntries(ps);
@@ -296,7 +380,7 @@ public final class LedgerStore {
                 double balance = rs.getDouble(10);
                 if (rs.wasNull()) balance = Double.NaN;
                 out.add(new LedgerEntry(rs.getLong(1), rs.getLong(2), player, rs.getString(4), Account.valueOf(rs.getString(5)),
-                        rs.getDouble(6), rs.getString(7), rs.getString(8), uuid(rs.getString(9)), balance));
+                        rs.getDouble(6), rs.getString(7), rs.getString(8), uuid(rs.getString(9)), balance, rs.getString(11)));
             }
         }
         return out;
@@ -568,8 +652,21 @@ public final class LedgerStore {
 
     // ------------------------------------------------------------------ prices (Lodestock)
 
-    public CompletableFuture<Void> savePrices(long time, Map<String, Double> prices) {
+    /** Saves an hourly price sample, and keeps it as the day's price (kept forever, for the inflation index). */
+    public CompletableFuture<Void> savePrices(long time, String day, Map<String, Double> prices) {
+        String daily = mysql()
+                ? "INSERT INTO " + PRICE_DAILY + " (day, item, price) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE price = VALUES(price)"
+                : "INSERT INTO " + PRICE_DAILY + " (day, item, price) VALUES (?, ?, ?) ON CONFLICT(day, item) DO UPDATE SET price = excluded.price";
         return db.execute(c -> {
+            try (PreparedStatement ps = c.prepareStatement(daily)) {
+                for (Map.Entry<String, Double> e : prices.entrySet()) {
+                    ps.setString(1, day);
+                    ps.setString(2, cut(e.getKey(), 48));
+                    ps.setDouble(3, e.getValue());
+                    ps.addBatch();
+                }
+                ps.executeBatch();
+            }
             try (PreparedStatement ps = c.prepareStatement("INSERT INTO " + PRICES + " (time, item, price) VALUES (?, ?, ?)")) {
                 for (Map.Entry<String, Double> e : prices.entrySet()) {
                     ps.setLong(1, time);
@@ -591,6 +688,251 @@ public final class LedgerStore {
                 ps.setLong(1, time);
                 try (ResultSet rs = ps.executeQuery()) {
                     while (rs.next()) out.put(rs.getString(1), rs.getDouble(2));
+                }
+            }
+            return out;
+        });
+    }
+
+    // ------------------------------------------------------------------ item trades
+
+    /** Saves item trades and adds their daily totals to what's already saved, in one transaction. */
+    public CompletableFuture<Void> saveTrades(com.direk.dkledger.items.ItemBuffer.Drained d) {
+        String addDay = mysql()
+                ? "INSERT INTO " + ITEM_DAILY + " (day, item, source, side, trades, quantity, money) VALUES (?, ?, ?, ?, ?, ?, ?) "
+                + "ON DUPLICATE KEY UPDATE trades = trades + VALUES(trades), quantity = quantity + VALUES(quantity), money = money + VALUES(money)"
+                : "INSERT INTO " + ITEM_DAILY + " (day, item, source, side, trades, quantity, money) VALUES (?, ?, ?, ?, ?, ?, ?) "
+                + "ON CONFLICT(day, item, source, side) DO UPDATE SET trades = trades + excluded.trades, "
+                + "quantity = quantity + excluded.quantity, money = money + excluded.money";
+        return db.execute(c -> inTransaction(c, () -> {
+            try (PreparedStatement ps = c.prepareStatement("INSERT INTO " + TRADES
+                    + " (time, uuid, name, source, item, side, quantity, money, detail) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                for (com.direk.dkledger.items.ItemTrade t : d.trades()) {
+                    ps.setLong(1, t.time());
+                    ps.setString(2, t.player().toString());
+                    ps.setString(3, cut(t.name(), 16));
+                    ps.setString(4, cut(t.source(), 64));
+                    ps.setString(5, cut(t.item(), 48));
+                    ps.setString(6, t.side().name());
+                    ps.setInt(7, t.quantity());
+                    ps.setDouble(8, t.money());
+                    ps.setString(9, cut(t.detail(), 160));
+                    ps.addBatch();
+                }
+                ps.executeBatch();
+            }
+            try (PreparedStatement ps = c.prepareStatement(addDay)) {
+                for (com.direk.dkledger.items.ItemBuffer.ItemDay day : d.days()) {
+                    ps.setString(1, day.day());
+                    ps.setString(2, cut(day.item(), 48));
+                    ps.setString(3, cut(day.source(), 64));
+                    ps.setString(4, day.side().name());
+                    ps.setInt(5, day.trades());
+                    ps.setLong(6, day.quantity());
+                    ps.setDouble(7, day.money());
+                    ps.addBatch();
+                }
+                ps.executeBatch();
+            }
+        }));
+    }
+
+    /** One item's trades over a period, both sides. */
+    public record ItemTotal(String item, long bought, double boughtMoney, long sold, double soldMoney, int trades) {
+        public double money() {
+            return boughtMoney + soldMoney;
+        }
+    }
+
+    /** Items traded between two days (inclusive), most money first. */
+    public CompletableFuture<List<ItemTotal>> itemTotals(String fromDay, String toDay, int limit) {
+        return db.query(c -> {
+            List<ItemTotal> out = new ArrayList<>();
+            try (PreparedStatement ps = c.prepareStatement("SELECT item, "
+                    + "SUM(CASE WHEN side = 'BUY' THEN quantity ELSE 0 END), SUM(CASE WHEN side = 'BUY' THEN money ELSE 0 END), "
+                    + "SUM(CASE WHEN side = 'SELL' THEN quantity ELSE 0 END), SUM(CASE WHEN side = 'SELL' THEN money ELSE 0 END), "
+                    + "SUM(trades) FROM " + ITEM_DAILY + " WHERE day >= ? AND day <= ? GROUP BY item ORDER BY SUM(money) DESC LIMIT ?")) {
+                ps.setString(1, fromDay);
+                ps.setString(2, toDay);
+                ps.setInt(3, limit);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        out.add(new ItemTotal(rs.getString(1), rs.getLong(2), rs.getDouble(3), rs.getLong(4), rs.getDouble(5), rs.getInt(6)));
+                    }
+                }
+            }
+            return out;
+        });
+    }
+
+    /** A player's items traded since a time, most money first. */
+    public CompletableFuture<List<ItemTotal>> playerItems(UUID player, long since, int limit) {
+        return db.query(c -> {
+            List<ItemTotal> out = new ArrayList<>();
+            try (PreparedStatement ps = c.prepareStatement("SELECT item, "
+                    + "SUM(CASE WHEN side = 'BUY' THEN quantity ELSE 0 END), SUM(CASE WHEN side = 'BUY' THEN money ELSE 0 END), "
+                    + "SUM(CASE WHEN side = 'SELL' THEN quantity ELSE 0 END), SUM(CASE WHEN side = 'SELL' THEN money ELSE 0 END), "
+                    + "COUNT(*) FROM " + TRADES + " WHERE uuid = ? AND time >= ? GROUP BY item ORDER BY SUM(money) DESC LIMIT ?")) {
+                ps.setString(1, player.toString());
+                ps.setLong(2, since);
+                ps.setInt(3, limit);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        out.add(new ItemTotal(rs.getString(1), rs.getLong(2), rs.getDouble(3), rs.getLong(4), rs.getDouble(5), rs.getInt(6)));
+                    }
+                }
+            }
+            return out;
+        });
+    }
+
+    // ------------------------------------------------------------------ reasons
+
+    /** Money per source and reason between two days (only changes a plugin gave a reason for). */
+    public CompletableFuture<List<ReasonTotal>> reasonTotals(String fromDay, String toDay, int limit) {
+        return db.query(c -> {
+            List<ReasonTotal> out = new ArrayList<>();
+            try (PreparedStatement ps = c.prepareStatement("SELECT source, reason, SUM(gained), SUM(lost), SUM(entries) FROM "
+                    + REASON_DAILY + " WHERE day >= ? AND day <= ? GROUP BY source, reason "
+                    + "ORDER BY SUM(gained) + SUM(lost) DESC LIMIT ?")) {
+                ps.setString(1, fromDay);
+                ps.setString(2, toDay);
+                ps.setInt(3, limit);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        out.add(new ReasonTotal(rs.getString(1), rs.getString(2), rs.getDouble(3), rs.getDouble(4), rs.getInt(5)));
+                    }
+                }
+            }
+            return out;
+        });
+    }
+
+    public record ReasonTotal(String source, String reason, double gained, double lost, int entries) {
+        public double net() {
+            return gained - lost;
+        }
+    }
+
+    // ------------------------------------------------------------------ players and playtime
+
+    /**
+     * Notes that a player is here: their name, when they last were, and their first join (the earliest one
+     * known is kept: the server's own record, which goes back before dkLedger was installed).
+     */
+    public CompletableFuture<Void> touchPlayer(UUID uuid, String name, long firstJoin, long now) {
+        String sql = mysql()
+                ? "INSERT INTO " + PLAYERS + " (uuid, name, first_join, first_tracked, last_seen) VALUES (?, ?, ?, ?, ?) "
+                + "ON DUPLICATE KEY UPDATE name = VALUES(name), last_seen = VALUES(last_seen), first_join = LEAST(first_join, VALUES(first_join))"
+                : "INSERT INTO " + PLAYERS + " (uuid, name, first_join, first_tracked, last_seen) VALUES (?, ?, ?, ?, ?) "
+                + "ON CONFLICT(uuid) DO UPDATE SET name = excluded.name, last_seen = excluded.last_seen, "
+                + "first_join = MIN(first_join, excluded.first_join)";
+        return db.execute(c -> {
+            try (PreparedStatement ps = c.prepareStatement(sql)) {
+                ps.setString(1, uuid.toString());
+                ps.setString(2, cut(name, 16));
+                ps.setLong(3, firstJoin);
+                ps.setLong(4, now);
+                ps.setLong(5, now);
+                ps.executeUpdate();
+            }
+        });
+    }
+
+    /** Adds minutes played to what's already saved. */
+    public CompletableFuture<Void> savePlaytime(List<com.direk.dkledger.players.PlaytimeBuffer.PlayerDay> days) {
+        String sql = mysql()
+                ? "INSERT INTO " + PLAYTIME + " (day, uuid, active_minutes, afk_minutes, sessions) VALUES (?, ?, ?, ?, ?) "
+                + "ON DUPLICATE KEY UPDATE active_minutes = active_minutes + VALUES(active_minutes), "
+                + "afk_minutes = afk_minutes + VALUES(afk_minutes), sessions = sessions + VALUES(sessions)"
+                : "INSERT INTO " + PLAYTIME + " (day, uuid, active_minutes, afk_minutes, sessions) VALUES (?, ?, ?, ?, ?) "
+                + "ON CONFLICT(day, uuid) DO UPDATE SET active_minutes = active_minutes + excluded.active_minutes, "
+                + "afk_minutes = afk_minutes + excluded.afk_minutes, sessions = sessions + excluded.sessions";
+        return db.execute(c -> {
+            try (PreparedStatement ps = c.prepareStatement(sql)) {
+                for (var d : days) {
+                    ps.setString(1, d.day());
+                    ps.setString(2, d.player().toString());
+                    ps.setInt(3, d.activeMinutes());
+                    ps.setInt(4, d.afkMinutes());
+                    ps.setInt(5, d.sessions());
+                    ps.addBatch();
+                }
+                ps.executeBatch();
+            }
+        });
+    }
+
+    /**
+     * What dkLedger knows about how a player plays.
+     *
+     * @param firstJoin     their first join (0 if dkLedger hasn't seen them yet)
+     * @param firstTracked  when dkLedger first saw them
+     * @param lastSeen      their last join or quit
+     * @param activeMinutes minutes active since the day asked for
+     * @param afkMinutes    minutes AFK since then
+     * @param sessions      joins since then
+     * @param days          days they played since then
+     */
+    public record Activity(long firstJoin, long firstTracked, long lastSeen, int activeMinutes, int afkMinutes, int sessions, int days) {
+    }
+
+    public CompletableFuture<Activity> activity(UUID uuid, String fromDay) {
+        return db.query(c -> {
+            long first = 0, tracked = 0, last = 0;
+            try (PreparedStatement ps = c.prepareStatement("SELECT first_join, first_tracked, last_seen FROM " + PLAYERS + " WHERE uuid = ?")) {
+                ps.setString(1, uuid.toString());
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) {
+                        first = rs.getLong(1);
+                        tracked = rs.getLong(2);
+                        last = rs.getLong(3);
+                    }
+                }
+            }
+            try (PreparedStatement ps = c.prepareStatement("SELECT SUM(active_minutes), SUM(afk_minutes), SUM(sessions), COUNT(*) FROM "
+                    + PLAYTIME + " WHERE uuid = ? AND day >= ?")) {
+                ps.setString(1, uuid.toString());
+                ps.setString(2, fromDay);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) return new Activity(first, tracked, last, rs.getInt(1), rs.getInt(2), rs.getInt(3), rs.getInt(4));
+                }
+            }
+            return new Activity(first, tracked, last, 0, 0, 0, 0);
+        });
+    }
+
+    // ------------------------------------------------------------------ progress events
+
+    public CompletableFuture<Void> addEvent(com.direk.dkledger.players.ProgressEvent e) {
+        return db.execute(c -> {
+            try (PreparedStatement ps = c.prepareStatement("INSERT INTO " + EVENTS
+                    + " (time, uuid, name, plugin, type, event_key, value) VALUES (?, ?, ?, ?, ?, ?, ?)")) {
+                ps.setLong(1, e.time());
+                ps.setString(2, e.player().toString());
+                ps.setString(3, e.name());
+                ps.setString(4, e.plugin());
+                ps.setString(5, e.type());
+                ps.setString(6, e.key());
+                ps.setDouble(7, e.value());
+                ps.executeUpdate();
+            }
+        });
+    }
+
+    /** A player's newest progress events, newest first. */
+    public CompletableFuture<List<com.direk.dkledger.players.ProgressEvent>> events(UUID uuid, int limit) {
+        return db.query(c -> {
+            List<com.direk.dkledger.players.ProgressEvent> out = new ArrayList<>();
+            try (PreparedStatement ps = c.prepareStatement("SELECT time, uuid, name, plugin, type, event_key, value FROM " + EVENTS
+                    + " WHERE uuid = ? ORDER BY id DESC LIMIT ?")) {
+                ps.setString(1, uuid.toString());
+                ps.setInt(2, limit);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        out.add(new com.direk.dkledger.players.ProgressEvent(rs.getLong(1), uuid, rs.getString(3), rs.getString(4),
+                                rs.getString(5), rs.getString(6), rs.getDouble(7)));
+                    }
                 }
             }
             return out;

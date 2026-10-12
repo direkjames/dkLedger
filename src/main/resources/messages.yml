@@ -26,6 +26,8 @@ help:
   - '<gold>/ledger supply</gold> <gray>- money supply now and its trend'
   - '<gold>/ledger sources [day|week|month]</gold> <gray>- where money comes from and goes'
   - '<gold>/ledger top [day|week|month]</gold> <gray>- top earners'
+  - '<gold>/ledger items [day|week|month]</gold> <gray>- items bought and sold in shops'
+  - '<gold>/ledger reasons [day|week|month]</gold> <gray>- money by reason, as reported by dk plugins'
   - '<gold>/ledger player <name></gold> <gray>- a player''s money history'
   - '<gold>/ledger alerts [open|all]</gold> <gray>- alerts; <gold>/ledger resolve <id> [note]</gold>'
   - '<gold>/ledger freeze|unfreeze <player> [reason]</gold> <gray>- stop a player sending money; <gold>/ledger frozen'
@@ -64,9 +66,25 @@ top:
   # <player> can be clicked to see their history.
   line: '<gray><rank>. <player> <gray>earned <green><earned></green>, spent <red><spent>'
 
+items:
+  header: '<dark_gray>— <gold><bold>Items traded</bold></gold> <gray>(<period>)</gray> —'
+  line: '<white><item></white> <gray>sold <white><sold></white> for <green><sold-money></green>, bought <white><bought></white> for <red><bought-money>'
+  off: '<gray>  Item tracking is off (tracking.items in config.yml).'
+
+reasons:
+  header: '<dark_gray>— <gold><bold>Money by reason</bold></gold> <gray>(<period>)</gray> —'
+  line: '<gray><source>: <white><reason></white> <net>'
+  none: '<gray>  No reasons yet. dk plugins report them through dkLedger''s API.'
+
 player:
   header: '<dark_gray>— <gold><bold><name></bold></gold> —'
   earned: '<gray>Earned today <green><today></green>, last 7 days <green><week></green>'
+  activity: '<gray>First joined <white><first-join></white> (<days-ago> days ago). Last 7 days: <white><active></white> active, <white><afk></white> AFK, <sessions> joins on <days> days'
+  per-hour: '<gray>Earned per hour played (7 days): <white><per-hour>'
+  progress-title: '<gold>Progress:'
+  progress: '<gray>  <text>'
+  items-title: '<gold>Items traded (7 days):'
+  item: '<gray>  <item>: sold <white><sold></white> for <green><sold-money></green>, bought <white><bought></white> for <red><bought-money>'
   frozen: '<red>Frozen: <white><reason>'
   sources-title: '<gold>Last 7 days by source:'
   source: '<gray>  <name>: <green>+<in></green> <red>-<out>'

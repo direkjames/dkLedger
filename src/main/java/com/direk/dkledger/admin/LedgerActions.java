@@ -7,17 +7,21 @@ import com.direk.dkledger.api.LedgerApi;
 import com.direk.dkledger.audit.AuditResult;
 import com.direk.dkledger.audit.Money;
 import com.direk.dkledger.audit.Severity;
+import com.direk.dkledger.items.ItemTrade;
+import com.direk.dkledger.ledger.Labels;
 import com.direk.dkledger.ledger.Account;
 import com.direk.dkledger.ledger.LedgerEntry;
 import com.direk.dkledger.ledger.LedgerStore;
 import com.direk.dkledger.ledger.Sources;
 import com.direk.dkledger.ledger.hook.VaultProxy;
+import com.direk.dkledger.players.ProgressEvent;
 import com.direk.dkledger.supply.Snapshot;
 import com.direk.dkledger.whatif.WhatIf;
 import net.milkbowl.vault.economy.Economy;
 import net.milkbowl.vault.economy.EconomyResponse;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
+import org.bukkit.plugin.Plugin;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -162,7 +166,8 @@ public final class LedgerActions implements LedgerApi {
                 for (LedgerEntry e : recent.join()) {
                     lines.add("#" + e.id() + " " + f.format(Instant.ofEpochMilli(e.time())) + " " + (e.amount() >= 0 ? "+" : "")
                             + Money.format(e.amount()) + " " + e.account().name().toLowerCase(Locale.ROOT) + " " + e.source()
-                            + (e.other() != null ? " (" + plugin.ledger().name(e.other()) + ")" : ""));
+                            + (e.other() != null ? " (" + plugin.ledger().name(e.other()) + ")" : "")
+                            + (e.reason().isEmpty() ? "" : " - " + e.reason()));
                 }
                 List<String> noteLines = new ArrayList<>();
                 for (LedgerStore.Note n : notes.join()) {
@@ -264,5 +269,100 @@ public final class LedgerActions implements LedgerApi {
             return CompletableFuture.completedFuture(List.of(e.getMessage()));
         }
         return live().thenCompose(live -> plugin.scans().whatIf(change, live));
+    }
+
+    // ------------------------------------------------------------------ reporting to dkLedger
+
+    @Override
+    public Label label(String reason) {
+        try {
+            Labels.Scope scope = plugin.ledger().labels().open(reason);
+            return scope::close;
+        } catch (RuntimeException e) {
+            return () -> { };
+        }
+    }
+
+    @Override
+    public void expect(UUID player, String reason) {
+        if (player == null) return;
+        try {
+            plugin.ledger().labels().expect(player, reason, System.currentTimeMillis());
+        } catch (RuntimeException ignored) {
+            // never break the caller
+        }
+    }
+
+    @Override
+    public void itemTrade(Plugin from, UUID player, String item, boolean bought, int quantity, double money) {
+        if (player == null || item == null) return;
+        try {
+            String name = Bukkit.getOfflinePlayer(player).getName();
+            plugin.items().record(new ItemTrade(System.currentTimeMillis(), player, name, from == null ? "unknown plugin" : from.getName(),
+                    item, bought ? ItemTrade.Side.BUY : ItemTrade.Side.SELL, quantity, money, "reported"));
+        } catch (RuntimeException e) {
+            plugin.debug("Ignored an item trade report: " + e);
+        }
+    }
+
+    @Override
+    public void progress(Plugin from, UUID player, String type, String key, double value) {
+        if (player == null || type == null) return;
+        try {
+            String name = Bukkit.getOfflinePlayer(player).getName();
+            plugin.progress().record(new ProgressEvent(System.currentTimeMillis(), player, name,
+                    from == null ? "unknown plugin" : from.getName(), type, key, value));
+        } catch (RuntimeException e) {
+            plugin.debug("Ignored a progress report: " + e);
+        }
+    }
+
+    // ------------------------------------------------------------------ items, reasons, activity
+
+    @Override
+    public CompletableFuture<List<Item>> items(int days) {
+        LocalDate today = LocalDate.now(zone());
+        return main(store.itemTotals(today.minusDays(Math.max(1, days) - 1L).toString(), today.toString(), 50)
+                .thenApply(list -> list.stream().map(t -> new Item(t.item(), t.bought(), t.boughtMoney(), t.sold(), t.soldMoney())).toList()));
+    }
+
+    @Override
+    public CompletableFuture<List<Reason>> reasons(int days) {
+        LocalDate today = LocalDate.now(zone());
+        return main(store.reasonTotals(today.minusDays(Math.max(1, days) - 1L).toString(), today.toString(), 50)
+                .thenApply(list -> list.stream().map(r -> new Reason(r.source(), r.reason(), r.gained(), r.lost())).toList()));
+    }
+
+    @Override
+    public CompletableFuture<Optional<Activity>> activity(String name) {
+        return find(name).thenCompose(ref -> {
+            if (ref.isEmpty()) return CompletableFuture.completedFuture(Optional.<Activity>empty());
+            UUID uuid = ref.get().uuid();
+            String weekStart = LocalDate.now(zone()).minusDays(6).toString();
+            CompletableFuture<LedgerStore.Activity> act = store.activity(uuid, weekStart);
+            CompletableFuture<List<ProgressEvent>> events = store.events(uuid, 5);
+            return main(CompletableFuture.allOf(act, events).thenApply(v -> {
+                LedgerStore.Activity a = act.join();
+                long first = a.firstJoin();
+                if (first == 0) {
+                    long played = Bukkit.getOfflinePlayer(uuid).getFirstPlayed();
+                    if (played > 0) first = played;
+                }
+                DateTimeFormatter f = DateTimeFormatter.ofPattern("MMM d", Locale.US).withZone(zone());
+                List<String> progress = new ArrayList<>();
+                for (ProgressEvent e : events.join()) {
+                    progress.add(f.format(Instant.ofEpochMilli(e.time())) + " " + e.type() + " " + e.key()
+                            + (e.value() != 0 ? " (" + new java.text.DecimalFormat("#,##0.##", java.text.DecimalFormatSymbols.getInstance(Locale.US))
+                            .format(e.value()) + ")" : ""));
+                }
+                return Optional.of(new Activity(uuid, ref.get().name(), first, a.activeMinutes(), a.afkMinutes(), a.sessions(), a.days(),
+                        progress));
+            }));
+        });
+    }
+
+    /** A player's items traded in the last 7 days (for /ledger player). */
+    public CompletableFuture<List<LedgerStore.ItemTotal>> playerItems(UUID player) {
+        return main(store.playerItems(player, System.currentTimeMillis() - 7 * DAY, 5));
     }
 }

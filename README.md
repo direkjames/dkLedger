@@ -10,6 +10,10 @@ Server: **Purpur 26.3**, Java **25**. Package: `com.direk.dkledger`. Built on **
 | Part | What it does |
 |---|---|
 | **Ledger** | Records every money change, wallet and bank, with the plugin that made it. New plugins are found automatically (call stack), nothing to hook by hand. |
+| **Item trades** | What players buy and sell in shops (Lodestock, EconomyShopGUI, plus plugins using the API): item, amount, money. |
+| **Playtime** | Each player's first join, and minutes active and AFK per day. Shows money earned per hour played. |
+| **Progress** | Things that aren't money: AOneBlock phases, dkBank tiers, plus whatever dk plugins report. Kept forever. |
+| **Reasons** | dk plugins can say *why* money moved ("quest: daily_3"), not only which plugin moved it. |
 | **Money supply** | Every hour: total money (wallets + dkBank), money per active player, how much the richest 10% hold. |
 | **Alerts** (B1–B10) | Supply growth, one source making most new money, too few sinks, players far above the median, buy/sell loops, new money sources, big staff changes, wealth concentration, Lodestock price swings, alt transfers, big transfers. |
 | **Admin actions** | Freeze a player's outgoing money, staff notes, resolve alerts, undo one ledger entry (owners). |
@@ -39,7 +43,9 @@ ones move money between players or between a player's wallet and bank.
 | `/ledger supply` | Money supply now, 24h and 7-day change |
 | `/ledger sources [day\|week\|month]` | Money in and out by source |
 | `/ledger top [day\|week\|month]` | Top earners |
-| `/ledger player <name>` | A player's earnings, sources, newest entries (with ids) and staff notes |
+| `/ledger items [day\|week\|month]` | Items bought and sold in shops |
+| `/ledger reasons [day\|week\|month]` | Money by reason, as reported by dk plugins |
+| `/ledger player <name>` | A player's earnings, first join, playtime, money per hour played, progress, items traded, sources, newest entries (with ids) and staff notes |
 | `/ledger alerts [open\|all] [page]` / `resolve <id> [note]` | Alerts and resolving them |
 | `/ledger freeze <player> [reason]` / `unfreeze <player>` / `frozen` | Stop a player sending money to others |
 | `/ledger note <player> <text>` | A staff note |
@@ -64,7 +70,7 @@ ones move money between players or between a player's wallet and bank.
 ## For the Discord bot
 
 ```kotlin
-compileOnly("com.direk:dkledger:0.2.0")
+compileOnly("com.direk:dkledger:0.3.0")
 ```
 ```yaml
 softdepend: [dkLedger]
@@ -76,12 +82,31 @@ LedgerApi.find().ifPresent(ledger -> ledger.supply().thenAccept(s -> ...));
 public void onAlert(LedgerAlertEvent e) { /* post e.getAlert() to a channel */ }
 ```
 `LedgerApi` has everything `/ledger` has: supply, sources, player summaries, alerts and resolving them, freeze,
-unfreeze, notes, reverse, scan and the simulator. Futures complete on the main thread.
+unfreeze, notes, reverse, scan and the simulator, plus items, reasons and activity. Futures complete on the main thread.
+
+## For other dk plugins (reporting to dkLedger)
+
+```java
+LedgerApi ledger = LedgerApi.find().orElse(null);
+
+// Why the money moved: every Vault call on this thread inside the block gets the reason.
+try (LedgerApi.Label l = ledger.label("quest: daily_3")) {
+    economy.depositPlayer(player, 500);
+}
+// Money that moves later or on another thread (a command, dkBank): the player's next change in 5 seconds.
+ledger.expect(player.getUniqueId(), "vote reward");
+
+// Item trades dkLedger can't see by itself, and progress that isn't money.
+ledger.itemTrade(this, player.getUniqueId(), "diamond", false, 16, 640);
+ledger.progress(this, player.getUniqueId(), "quest", "daily_3", 0);
+```
+These never throw and can be called from any thread.
 
 ## Database
 
-dkCore's shared database, tables starting with `dkledger_`. Single entries are kept `ledger.keep-entries-days`
-(30); daily totals, snapshots and alerts are kept. IP addresses are never stored, only a salted hash
+dkCore's shared database, tables starting with `dkledger_`. Single entries, item trades and hourly prices are kept
+`ledger.keep-entries-days` (90); daily totals (per source, reason, player and item), daily prices, snapshots, alerts,
+playtime and progress events are kept forever. Tables from older versions are updated on startup. IP addresses are never stored, only a salted hash
 (for the alt-transfer check), with the salt in `plugins/dkLedger/data/salt.txt`.
 
 ## Code layout
@@ -89,5 +114,7 @@ dkCore's shared database, tables starting with `dkledger_`. Single entries are k
 - `audit/` — the config audit (plain Java, no Bukkit, tested). `whatif/` — the simulator on top of it.
 - `ledger/` — recording: the Vault proxy and EssentialsX/dkBank hooks in `hook/`, source attribution, storage.
 - `supply/`, `detect/` — snapshots, the live and hourly checks, alerts.
+- `items/` — item trades: the Lodestock and EconomyShopGUI hooks, daily item totals.
+- `players/` — playtime (with AFK), first joins, progress events (AOneBlock, dkBank tiers).
 - `admin/` — freeze, logins, and `LedgerActions` (shared by commands, menus and the API).
 - `report/`, `gui/`, `command/`, `config/`, `api/`.

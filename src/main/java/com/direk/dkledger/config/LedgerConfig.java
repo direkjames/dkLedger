@@ -28,11 +28,12 @@ import java.util.Map;
  * @param alerts          alert delivery settings
  * @param freeze          what a freeze blocks
  * @param weekly          the weekly report
+ * @param tracking        what's recorded besides money: item trades, playtime, progress
  * @param warnings        problems found in config.yml (shown on startup and reload)
  */
 public record LedgerConfig(ZoneId zone, boolean scanOnStartup, int startupDelay, int keepReports, AuditSettings audit,
                            Ledger ledger, Thresholds thresholds, Alerts alerts, Freeze freeze, Weekly weekly,
-                           List<String> warnings) {
+                           Tracking tracking, List<String> warnings) {
 
     /**
      * @param enabled          record money changes
@@ -54,6 +55,15 @@ public record LedgerConfig(ZoneId zone, boolean scanOnStartup, int startupDelay,
     }
 
     public record Weekly(boolean enabled, DayOfWeek day, LocalTime time, int keep) {
+    }
+
+    /**
+     * @param items           record item trades with shops (Lodestock, EconomyShopGUI, and plugins using the API)
+     * @param playtime        record first joins and minutes played (active and AFK) per day
+     * @param afkAfterMinutes without EssentialsX's AFK status, a player idle this long counts as AFK (0 = never)
+     * @param progress        record progress events (OneBlock phases, dkBank tiers, and plugins using the API)
+     */
+    public record Tracking(boolean items, boolean playtime, int afkAfterMinutes, boolean progress) {
     }
 
     public static LedgerConfig load(YamlConfiguration c, Path pluginsFolder, Path dataFolder) {
@@ -116,7 +126,7 @@ public record LedgerConfig(ZoneId zone, boolean scanOnStartup, int startupDelay,
         }
 
         Ledger ledger = new Ledger(c.getBoolean("ledger.enabled", true), Math.max(1, c.getInt("ledger.flush-seconds", 5)),
-                Math.max(1, c.getInt("ledger.keep-entries-days", 30)), Math.max(5, c.getInt("ledger.snapshot-minutes", 60)),
+                Math.max(1, c.getInt("ledger.keep-entries-days", 90)), Math.max(5, c.getInt("ledger.snapshot-minutes", 60)),
                 Math.max(1, c.getInt("ledger.balances-per-tick", 20)),
                 paths(c, "ledger.transfer-sources", List.of("Essentials /pay", "AxTrade", "AxAuctions", "ChestShop", "dkBank transfers")),
                 paths(c, "ledger.internal-sources", List.of("dkBank")));
@@ -162,8 +172,15 @@ public record LedgerConfig(ZoneId zone, boolean scanOnStartup, int startupDelay,
         }
         Weekly weekly = new Weekly(c.getBoolean("weekly-report.enabled", true), day, time, Math.max(1, c.getInt("weekly-report.keep", 12)));
 
+        Tracking tracking = new Tracking(c.getBoolean("tracking.items", true), c.getBoolean("tracking.playtime", true),
+                Math.max(0, c.getInt("tracking.afk-after-minutes", 5)), c.getBoolean("tracking.progress", true));
+        if (ledger.keepDays() < 60) {
+            warnings.add("ledger.keep-entries-days is " + ledger.keepDays() + ": single entries and item trades older than that can't be "
+                    + "looked into or undone. 90 or more is recommended.");
+        }
+
         return new LedgerConfig(zone, c.getBoolean("scan.on-startup", true), Math.max(0, c.getInt("scan.startup-delay-seconds", 30)),
-                Math.max(1, c.getInt("scan.keep-reports", 20)), a, ledger, t, alerts, freeze, weekly, List.copyOf(warnings));
+                Math.max(1, c.getInt("scan.keep-reports", 20)), a, ledger, t, alerts, freeze, weekly, tracking, List.copyOf(warnings));
     }
 
     private static List<String> paths(YamlConfiguration c, String key, List<String> fallback) {

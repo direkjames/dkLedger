@@ -53,6 +53,8 @@ public final class LedgerCommand extends DkCommand {
         sub(new Simple("supply", this::supply));
         sub(new Period("sources", this::sources));
         sub(new Period("top", this::top));
+        sub(new Period("items", this::items));
+        sub(new Period("reasons", this::reasons));
         sub(new PlayerSub());
         sub(new Alerts());
         sub(new Resolve());
@@ -184,6 +186,30 @@ public final class LedgerCommand extends DkCommand {
         });
     }
 
+    private void items(CommandSender sender, int days) {
+        plugin.actions().items(days).thenAccept(list -> {
+            messages.send(sender, "items.header", Messages.text("period", periodName(days)));
+            if (list.isEmpty()) messages.send(sender, plugin.ledgerConfig().tracking().items() ? "nothing" : "items.off");
+            for (LedgerApi.Item i : list.subList(0, Math.min(15, list.size()))) {
+                messages.send(sender, "items.line", Messages.text("item", i.item()),
+                        Messages.text("sold", String.format(Locale.US, "%,d", i.sold())), Messages.text("sold-money", Money.format(i.soldMoney())),
+                        Messages.text("bought", String.format(Locale.US, "%,d", i.bought())), Messages.text("bought-money", Money.format(i.boughtMoney())));
+            }
+        });
+    }
+
+    private void reasons(CommandSender sender, int days) {
+        plugin.actions().reasons(days).thenAccept(list -> {
+            messages.send(sender, "reasons.header", Messages.text("period", periodName(days)));
+            if (list.isEmpty()) messages.send(sender, "reasons.none");
+            for (LedgerApi.Reason r : list.subList(0, Math.min(15, list.size()))) {
+                double net = r.gained() - r.lost();
+                messages.send(sender, "reasons.line", Messages.text("source", r.source()), Messages.text("reason", r.reason()),
+                        Messages.component("net", Component.text(Money.format(net), net >= 0 ? NamedTextColor.GREEN : NamedTextColor.RED)));
+            }
+        });
+    }
+
     // ------------------------------------------------------------------ players
 
     private final class PlayerSub extends SubCommand {
@@ -213,26 +239,67 @@ public final class LedgerCommand extends DkCommand {
                 return;
             }
             LedgerApi.Player p = found.get();
-            messages.send(sender, "player.header", Messages.text("name", p.name()));
-            messages.send(sender, "player.earned", Messages.text("today", Money.format(p.earnedToday())),
-                    Messages.text("week", Money.format(p.earned7d())));
-            if (p.frozen()) messages.send(sender, "player.frozen", Messages.text("reason", p.frozenReason() == null ? "" : p.frozenReason()));
-            if (!p.sources7d().isEmpty()) {
-                messages.send(sender, "player.sources-title");
-                for (LedgerApi.Source s : p.sources7d().subList(0, Math.min(8, p.sources7d().size()))) {
-                    messages.send(sender, "player.source", Messages.text("name", s.name()), Messages.text("in", Money.format(s.gained())),
-                            Messages.text("out", Money.format(s.lost())));
-                }
+            plugin.actions().activity(p.name()).thenCombine(plugin.actions().playerItems(p.uuid()),
+                    (act, items) -> { showPlayer(sender, p, act, items); return null; });
+        });
+    }
+
+    private void showPlayer(CommandSender sender, LedgerApi.Player p, java.util.Optional<LedgerApi.Activity> act,
+                            List<LedgerStore.ItemTotal> items) {
+        messages.send(sender, "player.header", Messages.text("name", p.name()));
+        messages.send(sender, "player.earned", Messages.text("today", Money.format(p.earnedToday())),
+                Messages.text("week", Money.format(p.earned7d())));
+        if (p.frozen()) messages.send(sender, "player.frozen", Messages.text("reason", p.frozenReason() == null ? "" : p.frozenReason()));
+        showActivity(sender, p, act, items);
+        if (!p.sources7d().isEmpty()) {
+            messages.send(sender, "player.sources-title");
+            for (LedgerApi.Source s : p.sources7d().subList(0, Math.min(8, p.sources7d().size()))) {
+                messages.send(sender, "player.source", Messages.text("name", s.name()), Messages.text("in", Money.format(s.gained())),
+                        Messages.text("out", Money.format(s.lost())));
             }
-            if (!p.recentEntries().isEmpty()) {
-                messages.send(sender, "player.recent-title");
-                for (String line : p.recentEntries()) messages.send(sender, "player.entry", Messages.text("text", line));
+        }
+        if (!p.recentEntries().isEmpty()) {
+            messages.send(sender, "player.recent-title");
+            for (String line : p.recentEntries()) messages.send(sender, "player.entry", Messages.text("text", line));
+        }
+        if (!p.notes().isEmpty()) {
+            messages.send(sender, "player.notes-title");
+            for (String line : p.notes()) messages.send(sender, "player.note", Messages.text("text", line));
+        }
+    }
+
+    /** First join, playtime, money per hour played, progress and items traded. */
+    private void showActivity(CommandSender sender, LedgerApi.Player p, java.util.Optional<LedgerApi.Activity> act,
+                              List<LedgerStore.ItemTotal> items) {
+        act.ifPresent(a -> {
+            String first = a.firstJoin() <= 0 ? "unknown"
+                    : DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.US).withZone(plugin.ledgerConfig().zone()).format(Instant.ofEpochMilli(a.firstJoin()));
+            long daysAgo = a.firstJoin() <= 0 ? -1 : (System.currentTimeMillis() - a.firstJoin()) / 86_400_000L;
+            messages.send(sender, "player.activity", Messages.text("first-join", first),
+                    Messages.text("days-ago", daysAgo < 0 ? "?" : String.valueOf(daysAgo)),
+                    Messages.text("active", hours(a.activeMinutes())), Messages.text("afk", hours(a.afkMinutes())),
+                    Messages.text("sessions", a.sessions()), Messages.text("days", a.daysPlayed()));
+            if (a.activeMinutes() + a.afkMinutes() >= 60) {
+                double perHour = p.earned7d() / ((a.activeMinutes() + a.afkMinutes()) / 60.0);
+                messages.send(sender, "player.per-hour", Messages.text("per-hour", Money.format(perHour)));
             }
-            if (!p.notes().isEmpty()) {
-                messages.send(sender, "player.notes-title");
-                for (String line : p.notes()) messages.send(sender, "player.note", Messages.text("text", line));
+            if (!a.progress().isEmpty()) {
+                messages.send(sender, "player.progress-title");
+                for (String line : a.progress()) messages.send(sender, "player.progress", Messages.text("text", line));
             }
         });
+        if (!items.isEmpty()) {
+            messages.send(sender, "player.items-title");
+            for (LedgerStore.ItemTotal i : items) {
+                messages.send(sender, "player.item", Messages.text("item", i.item()),
+                        Messages.text("sold", String.format(Locale.US, "%,d", i.sold())), Messages.text("sold-money", Money.format(i.soldMoney())),
+                        Messages.text("bought", String.format(Locale.US, "%,d", i.bought())), Messages.text("bought-money", Money.format(i.boughtMoney())));
+            }
+        }
+    }
+
+    private static String hours(int minutes) {
+        return minutes < 60 ? minutes + " min" : String.format(Locale.US, "%.1f h", minutes / 60.0);
     }
 
     // ------------------------------------------------------------------ alerts

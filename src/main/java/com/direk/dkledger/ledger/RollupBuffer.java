@@ -23,10 +23,15 @@ public final class RollupBuffer {
     public record PlayerDay(String day, UUID player, String name, double earned, double spent) {
     }
 
+    /** Money one source moved on one day for one reason (reported by the plugin through the API). */
+    public record ReasonDay(String day, String source, String reason, double gained, double lost, int entries) {
+    }
+
     private final ZoneId zone;
     private final Sources sources;
     private final Map<String, double[]> bySource = new LinkedHashMap<>();
     private final Map<String, double[]> byPlayer = new LinkedHashMap<>();
+    private final Map<String, double[]> byReason = new LinkedHashMap<>();
     private final Map<String, String> names = new LinkedHashMap<>();
 
     public RollupBuffer(ZoneId zone, Sources sources) {
@@ -44,6 +49,12 @@ public final class RollupBuffer {
         if (e.amount() >= 0) s[0] += e.amount();
         else s[1] += -e.amount();
         s[2]++;
+        if (!e.reason().isEmpty()) {
+            double[] r = byReason.computeIfAbsent(day + "\t" + e.source() + "\t" + e.reason(), k -> new double[3]);
+            if (e.amount() >= 0) r[0] += e.amount();
+            else r[1] += -e.amount();
+            r[2]++;
+        }
         if (sources.isEarning(e.source())) {
             String key = day + "\t" + e.player();
             double[] p = byPlayer.computeIfAbsent(key, k -> new double[2]);
@@ -65,15 +76,21 @@ public final class RollupBuffer {
             String[] k = e.getKey().split("\t");
             p.add(new PlayerDay(k[0], UUID.fromString(k[1]), names.getOrDefault(e.getKey(), ""), e.getValue()[0], e.getValue()[1]));
         }
+        List<ReasonDay> r = new ArrayList<>();
+        for (Map.Entry<String, double[]> e : byReason.entrySet()) {
+            String[] k = e.getKey().split("\t", 3);
+            r.add(new ReasonDay(k[0], k[1], k[2], e.getValue()[0], e.getValue()[1], (int) e.getValue()[2]));
+        }
         bySource.clear();
         byPlayer.clear();
+        byReason.clear();
         names.clear();
-        return new Drained(s, p);
+        return new Drained(s, p, r);
     }
 
-    public record Drained(List<SourceDay> sources, List<PlayerDay> players) {
+    public record Drained(List<SourceDay> sources, List<PlayerDay> players, List<ReasonDay> reasons) {
         public boolean isEmpty() {
-            return sources.isEmpty() && players.isEmpty();
+            return sources.isEmpty() && players.isEmpty() && reasons.isEmpty();
         }
     }
 }

@@ -6,7 +6,7 @@ author: direk james
 description: The dk suite's financial analyst - live ledger, money supply, alerts, admin actions, config audit and a what-if simulator.
 depend: [dkCore]
 # Loaded after these so the ledger can hook them, and the config audit can read their files and commands.
-softdepend: [Vault, Essentials, dkBank, Lodestock, EconomyShopGUI-Premium, BentoBox]
+softdepend: [Vault, Essentials, dkBank, Lodestock, EconomyShopGUI-Premium, EconomyShopGUI, BentoBox]
 
 commands:
   ledger:

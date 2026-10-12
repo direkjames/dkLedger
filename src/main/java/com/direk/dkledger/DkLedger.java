@@ -12,6 +12,8 @@ import com.direk.dkledger.detect.AlertService;
 import com.direk.dkledger.detect.DetectorService;
 import com.direk.dkledger.detect.LiveWatch;
 import com.direk.dkledger.gui.Menus;
+import com.direk.dkledger.items.EsguiHook;
+import com.direk.dkledger.items.ItemService;
 import com.direk.dkledger.ledger.CommandTracker;
 import com.direk.dkledger.ledger.LedgerService;
 import com.direk.dkledger.ledger.LedgerStore;
@@ -19,6 +21,9 @@ import com.direk.dkledger.ledger.RollupBuffer;
 import com.direk.dkledger.ledger.SourceResolver;
 import com.direk.dkledger.ledger.Sources;
 import com.direk.dkledger.ledger.hook.VaultProxy;
+import com.direk.dkledger.players.OneBlockHook;
+import com.direk.dkledger.players.PlaytimeService;
+import com.direk.dkledger.players.ProgressService;
 import com.direk.dkledger.report.WeeklyService;
 import com.direk.dkledger.scan.ScanService;
 import com.direk.dkledger.supply.SupplyService;
@@ -62,6 +67,9 @@ public final class DkLedger extends DkPlugin {
     private ScanService scans;
     private WeeklyService weekly;
     private LedgerActions actions;
+    private ItemService items;
+    private PlaytimeService playtime;
+    private ProgressService progress;
     private Menus menus;
     private LedgerCommand command;
     private final List<String> hooks = new ArrayList<>();
@@ -109,6 +117,9 @@ public final class DkLedger extends DkPlugin {
         weekly = new WeeklyService(this, store);
         actions = new LedgerActions(this, store);
         menus = new Menus(this);
+        items = new ItemService(this, store);
+        playtime = new PlaytimeService(this, store);
+        progress = new ProgressService(this, store);
         Sources rules = new Sources(config.ledger().transferSources(), config.ledger().internalSources());
         watch = new LiveWatch(rules, config.thresholds(), config.zone(), logins::of);
         applyConfig();
@@ -117,10 +128,14 @@ public final class DkLedger extends DkPlugin {
             proxy.recorder(ledger);
             hooks.add("Vault");
         }
-        listen(tracker, freezes, logins, new ServerListener());
+        listen(tracker, freezes, logins, playtime, new ServerListener());
         if (Bukkit.getPluginManager().isPluginEnabled("Essentials")) hook("Essentials", () -> listen(new com.direk.dkledger.ledger.hook.EssentialsHook(ledger)));
-        if (Bukkit.getPluginManager().isPluginEnabled("dkBank")) hook("dkBank", () -> listen(new com.direk.dkledger.ledger.hook.DkBankHook(ledger, freezes)));
-        if (Bukkit.getPluginManager().isPluginEnabled("Lodestock")) hooks.add("Lodestock (prices)");
+        if (Bukkit.getPluginManager().isPluginEnabled("dkBank")) {
+            hook("dkBank", () -> listen(new com.direk.dkledger.ledger.hook.DkBankHook(ledger, freezes)));
+            quietHook(() -> listen(new com.direk.dkledger.players.BankTierHook(progress)));
+        }
+        if (Bukkit.getPluginManager().isPluginEnabled("Lodestock")) hook("Lodestock (prices, trades)", () -> listen(new com.direk.dkledger.items.LodestockTradeHook(items)));
+        if (EsguiHook.install(this, items)) hooks.add("EconomyShopGUI (trades)");
 
         command = new LedgerCommand(this);
         registerCommand(command);
@@ -139,6 +154,7 @@ public final class DkLedger extends DkPlugin {
         supply.loadLatest();
         weekly.load();
         store.players().thenAccept(list -> list.forEach(p -> ledger.rememberName(p.uuid(), p.name())));
+        playtime.start();
 
         getServer().getServicesManager().register(LedgerApi.class, actions, this, ServicePriority.Normal);
         enableMs = System.currentTimeMillis() - start;
@@ -146,7 +162,9 @@ public final class DkLedger extends DkPlugin {
 
     @Override
     protected void disable() {
-        if (ledger != null) ledger.flushAndWait();
+        if (playtime != null) playtime.flush();
+        if (items != null) items.flush();
+        if (ledger != null) ledger.flushAndWait(); // waits for everything queued before it
         if (vaultProxy instanceof VaultProxy proxy) proxy.recorder(null); // keeps passing payments through, records nothing
         for (Player p : Bukkit.getOnlinePlayers()) {
             if (p.getOpenInventory().getTopInventory().getHolder() instanceof com.direk.dkcore.gui.Menu) p.closeInventory();
@@ -163,8 +181,16 @@ public final class DkLedger extends DkPlugin {
         freezes.configure(c.freeze().commands(), c.freeze().sources());
         supply.configure(c.ledger().balancesPerTick());
         detectors.configure(c.thresholds(), c.zone(), c.ledger().keepDays());
+        items.configure(c.tracking().items(), c.zone());
+        playtime.configure(c.tracking().playtime(), c.tracking().afkAfterMinutes(), c.zone());
+        progress.configure(c.tracking().progress());
         tasks().cancelAll();
-        tasks().timer(ledger::flush, 20L * c.ledger().flushSeconds(), 20L * c.ledger().flushSeconds());
+        tasks().timer(() -> {
+            ledger.flush();
+            items.flush();
+        }, 20L * c.ledger().flushSeconds(), 20L * c.ledger().flushSeconds());
+        tasks().timer(playtime::tick, 20L * 60, 20L * 60);
+        tasks().timer(playtime::flush, 20L * 300, 20L * 300);
         tasks().timer(() -> detectors.run(), 20L * 60, 20L * 60 * c.ledger().snapshotMinutes());
         tasks().timer(weekly::tick, 20L * 120, 20L * 300);
         for (String w : c.warnings()) getLogger().warning(w);
@@ -180,6 +206,15 @@ public final class DkLedger extends DkPlugin {
 
     public void watchPastWarmup(boolean past) {
         if (ledger != null) ledger.watch(w -> w.pastWarmup(past));
+    }
+
+    /** A hook that isn't worth a banner line; a failure only shows with debug on. */
+    private void quietHook(Runnable install) {
+        try {
+            install.run();
+        } catch (LinkageError | RuntimeException e) {
+            debug("Optional hook skipped: " + e);
+        }
     }
 
     private void hook(String name, Runnable install) {
@@ -215,6 +250,8 @@ public final class DkLedger extends DkPlugin {
             if (cfg().yaml().getBoolean("startup-banner", true)) Banner.print(DkLedger.this, bannerRows(), config.warnings(), enableMs);
             else getLogger().info("dkLedger v" + getPluginMeta().getVersion() + " enabled");
             if (config.scanOnStartup()) tasks().later(DkLedger.this::startupScan, config.startupDelay() * 20L);
+            // BentoBox enables its addons once the worlds are loaded: look for AOneBlock a little later.
+            tasks().later(DkLedger.this::hookOneBlock, 100L);
         }
 
         @EventHandler
@@ -228,6 +265,19 @@ public final class DkLedger extends DkPlugin {
         }
     }
 
+    private boolean oneBlockHooked;
+
+    private void hookOneBlock() {
+        if (oneBlockHooked || !Bukkit.getPluginManager().isPluginEnabled("BentoBox")) return;
+        try {
+            oneBlockHooked = OneBlockHook.install(this, progress::record);
+        } catch (LinkageError | RuntimeException e) {
+            debug("AOneBlock phases not hooked: " + e);
+        }
+        if (oneBlockHooked) getLogger().info("Recording AOneBlock phase changes as progress events.");
+        else debug("AOneBlock's phase event wasn't found; phases aren't recorded.");
+    }
+
     private List<Banner.Row> bannerRows() {
         List<Banner.Row> rows = new ArrayList<>();
         rows.add(new Banner.Row("Server", "<v>", Bukkit.getName() + " " + Bukkit.getMinecraftVersion()));
@@ -238,6 +288,11 @@ public final class DkLedger extends DkPlugin {
         rows.add(new Banner.Row("Hooks", hooks.isEmpty() ? "<yellow>none" : "<white><v>", String.join(", ", hooks)));
         rows.add(new Banner.Row("Ledger", config.ledger().enabled() ? "<green>recording</green> <gray>- kept <v> days" : "<gray>off",
                 String.valueOf(config.ledger().keepDays())));
+        List<String> tracked = new ArrayList<>();
+        if (config.tracking().items()) tracked.add("item trades");
+        if (config.tracking().playtime()) tracked.add("playtime (AFK: " + playtime.afk().describe() + ")");
+        if (config.tracking().progress()) tracked.add("progress");
+        rows.add(new Banner.Row("Tracking", tracked.isEmpty() ? "<gray>money only" : "<white><v>", String.join(", ", tracked)));
         rows.add(new Banner.Row("Alerts", "<white><v></white> <gray>open", String.valueOf(alerts.open().size())));
         rows.add(new Banner.Row("Frozen", "<white><v></white> <gray>player(s)", String.valueOf(freezes.all().size())));
         return rows;
@@ -264,6 +319,9 @@ public final class DkLedger extends DkPlugin {
     public WeeklyService weekly() { return weekly; }
     public LedgerActions actions() { return actions; }
     public Menus menus() { return menus; }
+    public ItemService items() { return items; }
+    public PlaytimeService playtime() { return playtime; }
+    public ProgressService progress() { return progress; }
 
     /** The Vault proxy, or null when Vault isn't installed. */
     public VaultProxy vault() {
