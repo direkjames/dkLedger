@@ -1,0 +1,21 @@
+name: dkLedger
+version: '${version}'
+main: dev.direk.dkledger.DkLedgerPlugin
+api-version: '1.21.4'
+author: direk james
+description: Our server's financial analyst. Audits the economy's configs and (soon) tracks every dollar.
+folia-supported: false
+# Loaded after the plugins it reads, so their files and commands exist when the first scan runs.
+softdepend: [Vault, Essentials, dkBank, Lodestock, EconomyShopGUI-Premium, BentoBox]
+
+# /ledger is registered with Paper's Brigadier API in code.
+
+permissions:
+  dkledger.admin:
+    description: Use /ledger.
+    default: op
+    children:
+      dkledger.alerts: true
+  dkledger.alerts:
+    description: Get a message in game when a scan finds critical problems.
+    default: op

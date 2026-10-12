@@ -1,0 +1,20 @@
+# All dependency and plugin versions in one place.
+
+[versions]
+# Same API dkBank compiles against. Everything dkLedger uses exists there and in 26.3.
+paper-api = "1.21.4-R0.1-SNAPSHOT"
+junit = "6.1.3"
+run-paper = "3.1.0"
+# Plugins on the local test server (runPurpur task)
+test-vault = "1.7.3"
+# EssentialsX 2.22.0 on Modrinth (run-paper needs the version id)
+test-essentialsx = "nY6VN1XH"
+
+[libraries]
+paper-api = { module = "io.papermc.paper:paper-api", version.ref = "paper-api" }
+junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
+junit-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+
+[plugins]
+run-paper = { id = "xyz.jpenilla.run-paper", version.ref = "run-paper" }

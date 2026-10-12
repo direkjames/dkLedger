@@ -1,0 +1,152 @@
+# dkLedger by direk james: our server's financial analyst.
+#
+# Phase 1: the config audit. /ledger scan reads every economy plugin's files and reports
+# money loops, prices that are off, rewards that are too big and commands that don't work.
+# Reports are saved in plugins/dkLedger/reports (latest.md is always the newest).
+#
+# /ledger reload applies changes to this file. Every number below has a safe default:
+# delete a line to go back to it.
+
+scan:
+  # Scan once after the server starts (and send the summary to admins online).
+  on-startup: true
+  # Wait this long after startup, so every plugin has finished loading.
+  startup-delay-seconds: 30
+  # Old reports to keep.
+  keep-reports: 20
+  # Time zone for report times. Empty = the server's.
+  timezone: "Asia/Manila"
+
+# Where each plugin keeps its files, relative to the plugins folder.
+# Each can list several places; the first one that exists is used.
+plugins:
+  economyshopgui-shops: ["EconomyShopGUI-Premium/shops", "EconomyShopGUI/shops"]
+  lodestock: ["Lodestock"]
+  virtual-spawner: ["VirtualSpawner", "Virtual Spawner"]
+  head-database: ["HeadDatabase/config.yml"]
+  dkbank: ["dkBank"]
+  afk-zone: ["AxAFKZone/config.yml", "AxAfkZone/config.yml"]
+  daily-rewards: ["NDailyRewards"]
+  playtime-rewards: ["RewardsLite/rewards"]
+  daily-quests: ["ODailyQuests"]
+  pinata-party: ["PinataParty/config.yml"]
+  oneblock: ["BentoBox/addons/AOneBlock"]
+  bentobox-addons: ["BentoBox/addons"]
+  player-warps: ["AxPlayerWarps/config.yml"]
+  auctions: ["AxAuctions/currencies.yml", "AxAuction/currencies.yml"]
+  crate-keys: ["ExcellentCrates/keys"]
+
+# How a typical player spends a day, for the daily income estimate (A7).
+profiles:
+  casual:
+    active-hours: 2
+    afk-hours: 0
+    votes: 4
+  grinder:
+    active-hours: 6
+    afk-hours: 8
+    votes: 4
+
+checks:
+  # Findings of one kind listed separately in chat and the report; the rest are summed up in one line.
+  max-findings-per-check: 25
+
+  # A2, A3: report a loop once it makes at least this much per item or craft.
+  loops:
+    min-profit: 0.05
+
+  # A4: crafting that multiplies value.
+  crafting:
+    # Report when the result is worth this many times its ingredients...
+    value-ratio: 2.0
+    # ...and one craft gains at least this much.
+    min-gain: 1.0
+    # Report items made from unsellable ingredients once one craft is worth this much.
+    sellable-only-after-crafting-min: 3.0
+
+  # A5: items players make forever with generators and farms, and the highest fair sell price.
+  # Selling above it is a warning; 5× above it is critical.
+  renewables:
+    COBBLESTONE: 0.25
+    STONE: 0.25
+    COBBLED_DEEPSLATE: 0.25
+    BASALT: 0.25
+    SMOOTH_BASALT: 0.3
+    POLISHED_BASALT: 0.3
+    OBSIDIAN: 8.0
+    CACTUS: 0.1
+    GREEN_DYE: 0.1
+    BAMBOO: 0.1
+    KELP: 0.1
+    DRIED_KELP: 0.1
+    SUGAR_CANE: 0.1
+    SUGAR: 0.1
+    PAPER: 0.1
+    MOSS_BLOCK: 0.3
+    VINE: 0.5
+    POINTED_DRIPSTONE: 0.3
+    SNOWBALL: 0.25
+    ICE: 1.0
+    PUMPKIN: 1.5
+    MELON_SLICE: 0.3
+    WHITE_WOOL: 1.5
+    STRING: 2.0
+    BONE_MEAL: 0.6
+
+  # A6: spawners.
+  spawners:
+    # Warn when a spawner pays for itself faster than this (hours with a player nearby).
+    min-payback-hours: 240
+    # Warn when a drop sells this many times higher outside Virtual Spawner.
+    drop-elsewhere-ratio: 1.5
+
+  # A7: rewards.
+  rewards:
+    # Warn when one reward is more than this share of a player's daily reward income (0.40 = 40%).
+    faucet-share-warn: 0.40
+    # One-time playtime milestones are spread over this many days.
+    milestone-days: 30
+    # AxAFKZone: "weighted" = one reward per roll, picked by chance; "independent" = every reward rolls on its own.
+    afk-zone-roll-mode: weighted
+
+  # A9: warn when a bank tier pays more than this per online hour at its cap.
+  bank:
+    online-per-hour-warn: 1000
+
+  # A10: OneBlock.
+  oneblock:
+    # Report fixed blocks (always the same block at the same count) worth at least this.
+    fixed-block-value: 50
+    # Report chest loot worth at least this per stack.
+    chest-item-value: 500
+    # Warn when a phase pays more than this per block broken, on average.
+    phase-average-warn: 3.0
+
+  # Lodestock: players sell at the base price minus tax-percent (false = at the base price).
+  lodestock-tax-on-sell: true
+
+  # A8: commands that are never reported as unknown, and "file:key" places that aren't checked.
+  commands:
+    ignore: []
+    ignore-paths:
+      - "HeadDatabase/config.yml:custom-command"
+
+  # The scan of all plugin folders (A7 money commands, A8 commands).
+  scan:
+    # Skipped files (globs, relative to the plugins folder). Player data and translations aren't config.
+    skip:
+      - "dkLedger/**"
+      - "**/locales/**"
+      - "**/lang/**"
+      - "**/languages/**"
+      - "**/translations/**"
+      - "**/userdata/**"
+      - "**/playerdata/**"
+      - "**/players/**"
+      - "**/database/**"
+      - "**/logs/**"
+      - "**/backups/**"
+      - "**/cache/**"
+      - "**/yaml-storage/**"
+    # Bigger files are data, not config: skipped.
+    max-file-kb: 2048
