@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex, nofollow">
+<title>dkLedger</title>
+<link rel="stylesheet" href="/app.css">
+<script src="/app.js" defer></script>
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="mark" aria-hidden="true"></span><span>dkLedger</span><span class="version" id="version"></span></div>
+  <div class="who" id="who" hidden>
+    <span id="who-name"></span>
+    <button type="button" class="ghost" id="logout">Sign out</button>
+  </div>
+</header>
+
+<main id="signin" class="signin" hidden>
+  <h1>Sign in</h1>
+  <p id="signin-text">Type <code>/ledger web</code> in game (or in the console) and click the link. It works once, for 5 minutes.</p>
+</main>
+
+<main id="app" hidden>
+  <div class="filters" role="group" aria-label="Period">
+    <button type="button" class="seg" data-days="1">Today</button>
+    <button type="button" class="seg" data-days="7">7 days</button>
+    <button type="button" class="seg" data-days="30">30 days</button>
+    <span class="updated" id="updated"></span>
+  </div>
+
+  <section class="hero card">
+    <div class="hero-main">
+      <div class="label">Money on the server</div>
+      <div class="hero-value" id="hero-total">–</div>
+      <div class="hero-sub" id="hero-sub"></div>
+    </div>
+    <div class="tiles" id="tiles"></div>
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <h2>Money supply</h2>
+      <p class="sub" id="supply-sub">Wallets and banks together, counted every hour.</p>
+    </div>
+    <div class="chart" id="supply-chart"></div>
+    <details class="table-view"><summary>Show as a table</summary><div id="supply-table"></div></details>
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <h2>Where money comes from and goes</h2>
+      <p class="sub">Net money per source. Faucets add money to the server, sinks remove it. Transfers between players only count their fees.</p>
+    </div>
+    <div class="legend" id="sources-legend"></div>
+    <div id="sources-chart"></div>
+  </section>
+
+  <div class="grid2">
+    <section class="card">
+      <div class="card-head"><h2>Top earners</h2><p class="sub">From earning sources (not transfers).</p></div>
+      <div id="top"></div>
+    </section>
+    <section class="card">
+      <div class="card-head"><h2>Alerts</h2><p class="sub">Last 30 days, newest first. Resolve them in game with <code>/ledger resolve</code>.</p></div>
+      <div id="alerts"></div>
+    </section>
+  </div>
+
+  <section class="card">
+    <div class="card-head"><h2>Items traded in shops</h2><p class="sub">Lodestock and EconomyShopGUI, most money first.</p></div>
+    <div id="items"></div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>Money by reason</h2><p class="sub">Reasons that dk plugins report with each payment.</p></div>
+    <div id="reasons"></div>
+  </section>
+
+  <section class="card" id="player-card">
+    <div class="card-head"><h2>Player</h2><p class="sub">Money, playtime, progress and items for one player.</p></div>
+    <form id="player-form" class="search" autocomplete="off">
+      <input id="player-name" name="name" type="text" placeholder="Player name" maxlength="16" spellcheck="false" aria-label="Player name">
+      <button type="submit">Look up</button>
+    </form>
+    <div id="player"></div>
+  </section>
+
+  <footer class="foot">Read-only. Changes to the economy are made in game.</footer>
+</main>
+
+<div class="tooltip" id="tooltip" role="status" hidden></div>
+</body>
+</html>

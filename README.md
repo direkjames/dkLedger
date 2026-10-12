@@ -21,6 +21,7 @@ Server: **Purpur 26.3**, Java **25**. Package: `com.direk.dkledger`. Built on **
 | **What if** | `/ledger whatif ...`: runs the audit with one change (price, spawner drop, spawner price, bank rate, reward size) and shows what it fixes, what it breaks and the 30-day money supply. Never edits a file. |
 | **Weekly report** | An HTML page with charts (and a Markdown copy) every week in `plugins/dkLedger/reports/`. |
 | **Menu** | `/ledger` in game: supply, alerts, sources, top earners, audit, frozen players, weekly report. |
+| **Web dashboard** | A read-only website: money supply chart, sources, top earners, alerts, items, reasons, player lookup. Sign in with `/ledger web`. |
 | **API** | `LedgerApi` and `LedgerAlertEvent` for the dk suite's Discord bot (see below). |
 
 ### How money is recorded
@@ -54,8 +55,29 @@ ones move money between players or between a player's wallet and bank.
 | `/ledger whatif <change>` | The simulator (type it alone for the options) |
 | `/ledger weekly` | Write the weekly report now |
 | `/ledger reload` | Reload config.yml and messages.yml |
+| `/ledger web` / `web logout` | A one-time sign-in link for the web dashboard / sign everyone out |
 
 `dkledger.alerts` (ops): get alerts in chat.
+
+## Web dashboard
+
+A small web server inside dkLedger (Java's own, nothing extra to install) serves a read-only page. Nothing on it can
+change the economy; actions stay in game and in the Discord bot.
+
+1. **Pterodactyl:** give the server an extra allocation (Admin → Nodes → Allocation, then Servers → Build
+   Configuration). Open the port in the VPS firewall if there is one (`ufw allow 25580/tcp`).
+2. **config.yml:** `web.enabled: true`, `web.port: <the allocation's port>`,
+   `web.public-url: "http://ledger.floreon.garden:<port>"`. Then `/ledger reload`.
+3. **Sign in:** `/ledger web` in game gives a button that opens the dashboard. The link works once, for 5 minutes; the
+   sign-in lasts `web.session-hours` (12). `/ledger web logout` signs everyone out. Losing `dkledger.admin` ends a
+   person's sessions.
+
+**HTTPS (recommended, free):** put the dashboard behind a Cloudflare Tunnel or Caddy so it's
+`https://ledger.floreon.garden`; then set `web.public-url` to that, `web.trust-proxy: true`, and the sign-in cookie
+becomes HTTPS-only. Without HTTPS it works, but the traffic isn't encrypted: sign out when done.
+
+Security: one-time sign-in keys (256-bit, kept only as hashes), HttpOnly cookies, failed sign-ins limited per address,
+strict Content-Security-Policy (no outside scripts), no caching, sessions in memory (a restart signs everyone out).
 
 ## Build
 
@@ -70,7 +92,7 @@ ones move money between players or between a player's wallet and bank.
 ## For the Discord bot
 
 ```kotlin
-compileOnly("com.direk:dkledger:0.3.0")
+compileOnly("com.direk:dkledger:0.4.0")
 ```
 ```yaml
 softdepend: [dkLedger]
@@ -116,5 +138,6 @@ playtime and progress events are kept forever. Tables from older versions are up
 - `supply/`, `detect/` — snapshots, the live and hourly checks, alerts.
 - `items/` — item trades: the Lodestock and EconomyShopGUI hooks, daily item totals.
 - `players/` — playtime (with AFK), first joins, progress events (AOneBlock, dkBank tiers).
+- `web/` — the dashboard's server, sign-in and JSON; the page itself is in `resources/web/`.
 - `admin/` — freeze, logins, and `LedgerActions` (shared by commands, menus and the API).
 - `report/`, `gui/`, `command/`, `config/`, `api/`.

@@ -36,6 +36,7 @@ help:
   - '<gold>/ledger scan</gold> <gray>- audit every economy plugin''s config; <gold>/ledger findings</gold>, <gold>/ledger budget'
   - '<gold>/ledger whatif <change></gold> <gray>- simulate a change (type it for the options)'
   - '<gold>/ledger weekly</gold> <gray>- write the weekly report now; <gold>/ledger report</gold> <gray>- where reports are'
+  - '<gold>/ledger web</gold> <gray>- a sign-in link for the web dashboard; <gold>/ledger web logout</gold> <gray>signs everyone out'
   - '<gold>/ledger reload</gold> <gray>- reload the config'
 
 scan:
@@ -155,3 +156,10 @@ menu:
   alerts-title: '<dark_gray>dkLedger · Alerts'
   top-title: '<dark_gray>dkLedger · Top earners (7 days)'
   frozen-title: '<dark_gray>dkLedger · Frozen players'
+
+web:
+  # <link> is a button that opens the dashboard in the browser.
+  link: '<prefix><gray>Your dashboard sign-in: <link> <dark_gray>(works once, for 5 minutes)'
+  console: '<prefix><gray>Dashboard sign-in (works once, for 5 minutes): <white><link>'
+  off: '<prefix><yellow>The web dashboard is off. Set web.enabled: true in config.yml, then /ledger reload.'
+  logged-out: '<prefix><green>Signed everyone out of the dashboard (<count> session(s)). Old sign-in links no longer work.'

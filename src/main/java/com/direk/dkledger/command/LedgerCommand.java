@@ -70,6 +70,7 @@ public final class LedgerCommand extends DkCommand {
         sub(new WhatIfSub());
         sub(new Simple("weekly", this::weekly));
         sub(new Simple("reload", this::reload));
+        sub(new WebSub());
     }
 
     @Override
@@ -300,6 +301,39 @@ public final class LedgerCommand extends DkCommand {
 
     private static String hours(int minutes) {
         return minutes < 60 ? minutes + " min" : String.format(Locale.US, "%.1f h", minutes / 60.0);
+    }
+
+    // ------------------------------------------------------------------ web dashboard
+
+    private final class WebSub extends SubCommand {
+        WebSub() {
+            super("web", ADMIN, false, "dashboard");
+        }
+
+        @Override
+        public void execute(CommandSender sender, String[] args) {
+            if (args.length > 0 && args[0].equalsIgnoreCase("logout")) {
+                int n = plugin.web().sessions().logoutAll();
+                messages.send(sender, "web.logged-out", Messages.text("count", n));
+                return;
+            }
+            if (!plugin.web().running()) {
+                messages.send(sender, "web.off");
+                return;
+            }
+            if (sender instanceof Player p) {
+                String link = plugin.web().loginLink(p.getUniqueId(), p.getName());
+                messages.send(sender, "web.link", Messages.component("link", Ui.link("Open the dashboard", link,
+                        "Signs you in to the dashboard. Works once, for 5 minutes. Don't share it.")));
+            } else {
+                messages.send(sender, "web.console", Messages.text("link", plugin.web().loginLink(null, "console")));
+            }
+        }
+
+        @Override
+        public List<String> tab(CommandSender sender, String[] args) {
+            return args.length == 1 ? List.of("logout") : List.of();
+        }
     }
 
     // ------------------------------------------------------------------ alerts

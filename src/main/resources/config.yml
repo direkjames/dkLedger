@@ -43,6 +43,23 @@ tracking:
   # Progress that isn't money: AOneBlock phases, dkBank tiers, plus plugins that report through the API.
   progress: true
 
+# ------------------------------------------------------------------ web dashboard
+# A read-only website with the economy: supply, sources, items, players, alerts. Sign in with /ledger web
+# (a one-time link, no passwords). Nothing on it can change the economy.
+web:
+  enabled: false
+  # The port, and the address to listen on. With Pterodactyl, give this server an extra allocation and use its port;
+  # keep bind at 0.0.0.0.
+  port: 25580
+  bind: "0.0.0.0"
+  # The address people open, used in sign-in links. Include the port unless a proxy (Cloudflare Tunnel, Caddy) serves it.
+  # Examples: "http://ledger.floreon.garden:25580" or "https://ledger.floreon.garden"
+  public-url: ""
+  # How long a sign-in lasts, in hours.
+  session-hours: 12
+  # true only behind Cloudflare or a reverse proxy: the visitor's address is read from the proxy's headers.
+  trust-proxy: false
+
 # ------------------------------------------------------------------ alerts
 # Safe defaults. Each alert is a warning or critical; the same alert isn't repeated within repeat-hours
 # unless it gets worse. Admins with dkledger.alerts get them in chat.

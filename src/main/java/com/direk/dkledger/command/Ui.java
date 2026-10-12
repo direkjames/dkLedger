@@ -21,6 +21,13 @@ public final class Ui {
                 .hoverEvent(HoverEvent.showText(Component.text(wrap(hover, 50), NamedTextColor.GRAY)));
     }
 
+    /** A link that opens in the browser. */
+    public static Component link(String label, String url, String hover) {
+        return Component.text("[" + label + "]", NamedTextColor.AQUA)
+                .clickEvent(ClickEvent.openUrl(url))
+                .hoverEvent(HoverEvent.showText(Component.text(wrap(hover, 50), NamedTextColor.GRAY)));
+    }
+
     /** A player name that opens their history. */
     public static Component player(String name) {
         return Component.text(name, NamedTextColor.WHITE)

@@ -70,6 +70,7 @@ public final class DkLedger extends DkPlugin {
     private ItemService items;
     private PlaytimeService playtime;
     private ProgressService progress;
+    private com.direk.dkledger.web.WebServer web;
     private Menus menus;
     private LedgerCommand command;
     private final List<String> hooks = new ArrayList<>();
@@ -120,6 +121,7 @@ public final class DkLedger extends DkPlugin {
         items = new ItemService(this, store);
         playtime = new PlaytimeService(this, store);
         progress = new ProgressService(this, store);
+        web = new com.direk.dkledger.web.WebServer(this);
         Sources rules = new Sources(config.ledger().transferSources(), config.ledger().internalSources());
         watch = new LiveWatch(rules, config.thresholds(), config.zone(), logins::of);
         applyConfig();
@@ -162,6 +164,7 @@ public final class DkLedger extends DkPlugin {
 
     @Override
     protected void disable() {
+        if (web != null) web.stop();
         if (playtime != null) playtime.flush();
         if (items != null) items.flush();
         if (ledger != null) ledger.flushAndWait(); // waits for everything queued before it
@@ -194,6 +197,10 @@ public final class DkLedger extends DkPlugin {
         tasks().timer(() -> detectors.run(), 20L * 60, 20L * 60 * c.ledger().snapshotMinutes());
         tasks().timer(weekly::tick, 20L * 120, 20L * 300);
         for (String w : c.warnings()) getLogger().warning(w);
+        LedgerConfig.Web w = c.web();
+        String problem = web.configure(w.enabled(), w.bind(), w.port(), w.publicUrl(), w.sessionHours(), w.trustProxy());
+        if (problem != null) getLogger().warning(problem);
+        tasks().timer(() -> web.sessions().cleanup(System.currentTimeMillis()), 20L * 600, 20L * 600);
     }
 
     /** /ledger reload: config.yml and messages.yml, without a restart. */
@@ -293,6 +300,8 @@ public final class DkLedger extends DkPlugin {
         if (config.tracking().playtime()) tracked.add("playtime (AFK: " + playtime.afk().describe() + ")");
         if (config.tracking().progress()) tracked.add("progress");
         rows.add(new Banner.Row("Tracking", tracked.isEmpty() ? "<gray>money only" : "<white><v>", String.join(", ", tracked)));
+        rows.add(new Banner.Row("Dashboard", web.running() ? "<green>on</green> <gray>port <v>" : "<gray>off",
+                String.valueOf(config.web().port())));
         rows.add(new Banner.Row("Alerts", "<white><v></white> <gray>open", String.valueOf(alerts.open().size())));
         rows.add(new Banner.Row("Frozen", "<white><v></white> <gray>player(s)", String.valueOf(freezes.all().size())));
         return rows;
@@ -322,6 +331,8 @@ public final class DkLedger extends DkPlugin {
     public ItemService items() { return items; }
     public PlaytimeService playtime() { return playtime; }
     public ProgressService progress() { return progress; }
+    public com.direk.dkledger.web.WebServer web() { return web; }
+    public LedgerStore store() { return store; }
 
     /** The Vault proxy, or null when Vault isn't installed. */
     public VaultProxy vault() {

@@ -29,11 +29,12 @@ import java.util.Map;
  * @param freeze          what a freeze blocks
  * @param weekly          the weekly report
  * @param tracking        what's recorded besides money: item trades, playtime, progress
+ * @param web             the web dashboard
  * @param warnings        problems found in config.yml (shown on startup and reload)
  */
 public record LedgerConfig(ZoneId zone, boolean scanOnStartup, int startupDelay, int keepReports, AuditSettings audit,
                            Ledger ledger, Thresholds thresholds, Alerts alerts, Freeze freeze, Weekly weekly,
-                           Tracking tracking, List<String> warnings) {
+                           Tracking tracking, Web web, List<String> warnings) {
 
     /**
      * @param enabled          record money changes
@@ -64,6 +65,17 @@ public record LedgerConfig(ZoneId zone, boolean scanOnStartup, int startupDelay,
      * @param progress        record progress events (OneBlock phases, dkBank tiers, and plugins using the API)
      */
     public record Tracking(boolean items, boolean playtime, int afkAfterMinutes, boolean progress) {
+    }
+
+    /**
+     * @param enabled      run the dashboard
+     * @param bind         the address to listen on (0.0.0.0 = every address; right for Pterodactyl)
+     * @param port         the port (in Pterodactyl, an allocation given to this server)
+     * @param publicUrl    the address people open, used in login links ("https://ledger.example.com")
+     * @param sessionHours how long a sign-in lasts
+     * @param trustProxy   behind Cloudflare or a reverse proxy: read the visitor's address from its headers
+     */
+    public record Web(boolean enabled, String bind, int port, String publicUrl, int sessionHours, boolean trustProxy) {
     }
 
     public static LedgerConfig load(YamlConfiguration c, Path pluginsFolder, Path dataFolder) {
@@ -179,8 +191,21 @@ public record LedgerConfig(ZoneId zone, boolean scanOnStartup, int startupDelay,
                     + "looked into or undone. 90 or more is recommended.");
         }
 
+        int port = c.getInt("web.port", 25580);
+        if (port < 1 || port > 65535) {
+            warnings.add("web.port must be 1 to 65535. Using 25580.");
+            port = 25580;
+        }
+        String url = c.getString("web.public-url", "");
+        if (url != null && !url.isBlank() && !url.strip().matches("(?i)https?://.+")) {
+            warnings.add("web.public-url must start with http:// or https:// (example: http://ledger.example.com:25580).");
+            url = "";
+        }
+        Web web = new Web(c.getBoolean("web.enabled", false), c.getString("web.bind", "0.0.0.0"), port, url == null ? "" : url,
+                Math.max(1, c.getInt("web.session-hours", 12)), c.getBoolean("web.trust-proxy", false));
+
         return new LedgerConfig(zone, c.getBoolean("scan.on-startup", true), Math.max(0, c.getInt("scan.startup-delay-seconds", 30)),
-                Math.max(1, c.getInt("scan.keep-reports", 20)), a, ledger, t, alerts, freeze, weekly, tracking, List.copyOf(warnings));
+                Math.max(1, c.getInt("scan.keep-reports", 20)), a, ledger, t, alerts, freeze, weekly, tracking, web, List.copyOf(warnings));
     }
 
     private static List<String> paths(YamlConfiguration c, String key, List<String> fallback) {
