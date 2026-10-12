@@ -1,21 +1,98 @@
-# dkLedger by direk james: our server's financial analyst.
-#
-# Phase 1: the config audit. /ledger scan reads every economy plugin's files and reports
-# money loops, prices that are off, rewards that are too big and commands that don't work.
-# Reports are saved in plugins/dkLedger/reports (latest.md is always the newest).
-#
-# /ledger reload applies changes to this file. Every number below has a safe default:
-# delete a line to go back to it.
+# ============================================
+#  dkLedger - the dk suite's financial analyst
+#  Author: direk james
+# ============================================
+# /ledger reload applies changes to this file. Every number has a safe default:
+# delete a line to go back to it (dkCore adds it back).
 
+# Time zone for days, reports and the weekly report. Empty = the server's.
+timezone: "Asia/Manila"
+
+# Show the dkLedger banner in the console on startup.
+startup-banner: true
+
+# ------------------------------------------------------------------ the ledger
+ledger:
+  # Record every money change (wallet and bank), with the plugin that made it.
+  enabled: true
+  # How often recorded changes are saved to the database.
+  flush-seconds: 5
+  # Single changes are kept this long; daily totals and money supply snapshots are kept forever.
+  keep-entries-days: 30
+  # How often everyone's money is counted and the hourly checks run.
+  snapshot-minutes: 60
+  # Wallets read per tick while counting (higher = faster count, more work per tick).
+  balances-per-tick: 20
+  # Sources that move money between players: not counted as earnings, used for the transfer checks.
+  # Names are plugin names as they appear in /ledger sources.
+  transfer-sources: ["Essentials /pay", "AxTrade", "AxAuctions", "ChestShop", "dkBank transfers"]
+  # Sources that move money between a player's own wallet and bank: only their fees count.
+  internal-sources: ["dkBank"]
+
+# ------------------------------------------------------------------ alerts
+# Safe defaults. Each alert is a warning or critical; the same alert isn't repeated within repeat-hours
+# unless it gets worse. Admins with dkledger.alerts get them in chat.
+alerts:
+  repeat-hours: 6
+  notify-in-game: true
+  # Sound for admins on a new alert (a Minecraft sound name). '' = no sound.
+  sound: "block.note_block.bell"
+  # The first days after installing, supply grows fast because it starts near zero: B1 and B2 stay quiet.
+  warmup-days: 14
+  # B1: money supply growth per day (7-day average). 0.05 = 5%.
+  supply-growth: {warning: 0.05, critical: 0.10}
+  # B1: money per active player, growth over 7 days.
+  per-player-growth: {warning: 0.15, critical: 0.30}
+  # B2: one source's share of all new money in 7 days (only once at least min-new-money was created).
+  source-share: {warning: 0.40, critical: 0.60, min-new-money: 10000}
+  # B2: money removed by sinks, as a share of money added, over 7 days. Lower is worse.
+  sink-ratio: {warning: 0.30, critical: 0.15}
+  # B3: a player earning this many times the median today (if they earned at least min-earned, and at
+  # least min-earners players earned something).
+  player-vs-median: {warning: 8, critical: 15, min-earned: 5000, min-earners: 5}
+  # B3: a player's earnings in the last hour.
+  player-per-hour: {warning: 10000, critical: 25000}
+  # B4: buying and selling with the same plugin this many times within window-minutes.
+  buy-sell-loop: {warning: 20, critical: 50, window-minutes: 10}
+  # B5: a plugin moving money for the first time (after the first day).
+  new-source: true
+  # B6: a staff /eco or bank change this big (every staff change is in the ledger anyway).
+  staff-money: {warning: 10000}
+  # B7: share of all money held by the richest 10% (once there are min-accounts players).
+  top-share: {warning: 0.60, critical: 0.75, min-accounts: 10}
+  # B8: a Lodestock price moving this much in this many days.
+  price-change: {warning: 0.30, critical: 0.60, days: 7}
+  # B9: money a player gets in one day from accounts on the same connection (likely alts).
+  alt-transfers: {warning: 5000, critical: 20000}
+  # B10: one transfer between players this big.
+  big-transfer: {warning: 25000, critical: 100000}
+
+# ------------------------------------------------------------------ freezing players
+# /ledger freeze stops a player sending money to other players. They can still earn, buy and play.
+freeze:
+  # Commands they can't use (the start of the command, without /).
+  blocked-commands: ["pay", "epay", "trade", "ah sell", "auction sell", "bank pay", "bank transfer"]
+  # Plugins whose Vault payments are refused for them.
+  blocked-sources: ["AxTrade", "AxAuctions", "ChestShop"]
+
+# ------------------------------------------------------------------ weekly report
+# An HTML page with charts (and a Markdown copy) in plugins/dkLedger/reports, every week.
+weekly-report:
+  enabled: true
+  # MONDAY to SUNDAY, and a time in 24-hour format (in the time zone above).
+  day: MONDAY
+  time: "09:00"
+  # Weekly reports to keep.
+  keep: 12
+
+# ------------------------------------------------------------------ the config audit (/ledger scan)
 scan:
-  # Scan once after the server starts (and send the summary to admins online).
+  # Scan once after the server starts; admins online get the summary if it finds critical problems.
   on-startup: true
   # Wait this long after startup, so every plugin has finished loading.
   startup-delay-seconds: 30
-  # Old reports to keep.
+  # Old audit reports to keep.
   keep-reports: 20
-  # Time zone for report times. Empty = the server's.
-  timezone: "Asia/Manila"
 
 # Where each plugin keeps its files, relative to the plugins folder.
 # Each can list several places; the first one that exists is used.

@@ -1,16 +1,9 @@
-# Gradle
 .gradle/
 build/
-!gradle/wrapper/gradle-wrapper.jar
-
-# IntelliJ IDEA
+out/
 .idea/
 *.iml
-out/
-
-# Local test servers
-run/
-
-# OS
+*.iws
+*.ipr
 .DS_Store
-Thumbs.db
+run/

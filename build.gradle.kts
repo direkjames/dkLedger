@@ -1,80 +1,88 @@
-// dkLedger: private economy auditor for our Purpur 26.3 server (Java 25).
-
-import xyz.jpenilla.runpaper.task.RunServer
-import java.net.URI
+// dkLedger - the dk suite's financial analyst. Author: direk james
+//
+//   ./gradlew build                -> build/libs/dkLedger-<version>.jar (put on the server next to dkCore)
+//   ./gradlew publishToMavenLocal  -> lets other dk plugins (e.g. the Discord bot) compile against dkLedger's API
+//
+// Needs in your local Maven repo first:
+//   dkCore:     "./gradlew publishToMavenLocal" in dkCore
+//   dkBank:     "./gradlew :api:publishToMavenLocal" in dkBank
+//   Lodestock:  "./gradlew :api:publishToMavenLocal" in Lodestock
 
 plugins {
     java
-    alias(libs.plugins.run.paper)
+    `maven-publish`
 }
 
-java {
-    toolchain.languageVersion.set(JavaLanguageVersion.of(25))
-}
+group = "com.direk"
+version = "0.2.0"
 
-dependencies {
-    compileOnly(libs.paper.api)
-
-    testImplementation(platform(libs.junit.bom))
-    testImplementation(libs.junit.jupiter)
-    testRuntimeOnly(libs.junit.launcher)
-}
-
-tasks {
-    withType<JavaCompile>().configureEach {
-        options.encoding = "UTF-8"
-        options.release.set(25)
-        options.compilerArgs.addAll(listOf("-Xlint:all", "-Xlint:-processing", "-Xlint:-serial"))
+repositories {
+    mavenLocal {
+        content {
+            includeGroup("com.direk")
+            includeGroup("dev.direk")
+            includeGroup("io.github.direkjames")
+        }
     }
-
-    test {
-        useJUnitPlatform()
+    mavenCentral()
+    maven("https://repo.purpurmc.org/snapshots") {
+        content { includeGroup("org.purpurmc.purpur") }
     }
-
-    processResources {
-        val props = mapOf("version" to project.version)
-        inputs.properties(props)
-        filesMatching("plugin.yml") { expand(props) }
+    maven("https://repo.papermc.io/repository/maven-public/")
+    maven("https://repo.essentialsx.net/releases/") {
+        content { includeGroup("net.essentialsx") }
     }
-
-    jar {
-        archiveFileName.set("dkLedger-${project.version}.jar")
-    }
-}
-
-// ---------------------------------------------------------------- local test server
-// ./gradlew runPurpur  ->  Purpur 26.3 with Vault, EssentialsX and dkLedger in run/purpur-26.3.
-// Copy our real plugin configs into run/purpur-26.3/plugins to audit them.
-
-val purpurVersion = "26.3"
-
-val downloadPurpur = tasks.register("downloadPurpur") {
-    group = "dkledger test server"
-    description = "Downloads the latest Purpur $purpurVersion build"
-    val target = layout.buildDirectory.file("purpur/purpur-$purpurVersion.jar")
-    outputs.file(target)
-    onlyIf { !target.get().asFile.exists() }
-    doLast {
-        val file = target.get().asFile
-        file.parentFile.mkdirs()
-        URI("https://api.purpurmc.org/v2/purpur/$purpurVersion/latest/download").toURL().openStream().use { input ->
-            file.outputStream().use { input.copyTo(it) }
+    maven("https://jitpack.io") {
+        content {
+            includeGroup("com.github.MilkBowl") // Vault API only
         }
     }
 }
 
-tasks.register<RunServer>("runPurpur") {
-    group = "dkledger test server"
-    description = "Runs Purpur $purpurVersion with dkLedger"
-    dependsOn(downloadPurpur)
-    minecraftVersion(purpurVersion)
-    serverJar(layout.buildDirectory.file("purpur/purpur-$purpurVersion.jar"))
-    displayName.set("Purpur")
-    runDirectory.set(layout.projectDirectory.dir("run/purpur-$purpurVersion"))
-    javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(25)) })
-    pluginJars(tasks.jar.flatMap { it.archiveFile })
-    downloadPlugins {
-        github("MilkBowl", "Vault", libs.versions.test.vault.get(), "Vault.jar")
-        modrinth("essentialsx", libs.versions.test.essentialsx.get())
+dependencies {
+    compileOnly("org.purpurmc.purpur:purpur-api:${property("purpurVersion")}")
+    // Never shade these: each is its own plugin on the server.
+    compileOnly("com.direk:dkcore:${property("dkcoreVersion")}")
+    compileOnly("com.github.MilkBowl:VaultAPI:${property("vaultVersion")}") { isTransitive = false }
+    // Optional at runtime: only classes in ledger/hook touch these, after the plugin is known to be enabled.
+    compileOnly("dev.direk:dkBank-API:${property("dkbankApiVersion")}") { isTransitive = false }
+    compileOnly("net.essentialsx:EssentialsX:${property("essentialsVersion")}") { isTransitive = false }
+    compileOnly("io.github.direkjames:lodestock-api:${property("lodestockVersion")}") { isTransitive = false }
+
+    testImplementation(platform("org.junit:junit-bom:${property("junitVersion")}"))
+    testImplementation("org.junit.jupiter:junit-jupiter")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+}
+
+java {
+    toolchain.languageVersion.set(JavaLanguageVersion.of(25))
+    withSourcesJar()
+}
+
+tasks.withType<JavaCompile>().configureEach {
+    options.encoding = "UTF-8"
+    options.release.set(25)
+}
+
+tasks.test {
+    useJUnitPlatform()
+}
+
+tasks.processResources {
+    val props = mapOf("version" to project.version.toString())
+    inputs.properties(props)
+    filesMatching("plugin.yml") { expand(props) }
+}
+
+tasks.jar {
+    archiveFileName.set("dkLedger-${project.version}.jar")
+}
+
+publishing {
+    publications {
+        create<MavenPublication>("maven") {
+            artifactId = "dkledger"
+            from(components["java"])
+        }
     }
 }

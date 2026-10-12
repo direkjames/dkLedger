@@ -1,21 +1,31 @@
 name: dkLedger
 version: '${version}'
-main: dev.direk.dkledger.DkLedgerPlugin
-api-version: '1.21.4'
+main: com.direk.dkledger.DkLedger
+api-version: '26.1'
 author: direk james
-description: Our server's financial analyst. Audits the economy's configs and (soon) tracks every dollar.
-folia-supported: false
-# Loaded after the plugins it reads, so their files and commands exist when the first scan runs.
+description: The dk suite's financial analyst - live ledger, money supply, alerts, admin actions, config audit and a what-if simulator.
+depend: [dkCore]
+# Loaded after these so the ledger can hook them, and the config audit can read their files and commands.
 softdepend: [Vault, Essentials, dkBank, Lodestock, EconomyShopGUI-Premium, BentoBox]
 
-# /ledger is registered with Paper's Brigadier API in code.
+commands:
+  ledger:
+    description: dkLedger - the server's economy.
+    usage: /ledger help
+    aliases: [dkledger]
+    permission: dkledger.admin
 
 permissions:
   dkledger.admin:
-    description: Use /ledger.
+    description: Use /ledger and its menu (everything except undoing entries).
     default: op
     children:
       dkledger.alerts: true
+  dkledger.owner:
+    description: Undo ledger entries (/ledger reverse). Not given to ops on purpose.
+    default: false
+    children:
+      dkledger.admin: true
   dkledger.alerts:
-    description: Get a message in game when a scan finds critical problems.
+    description: Get economy alerts in chat when they happen.
     default: op

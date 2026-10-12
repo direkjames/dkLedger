@@ -1,63 +1,93 @@
 # dkLedger
 
-Our server's financial analyst. Private plugin for Purpur 26.3 (Java 25) by direk james.
+The dk suite's financial analyst. Author: **direk james**.
+Server: **Purpur 26.3**, Java **25**. Package: `com.direk.dkledger`. Built on **dkCore**.
 
-## Phase 1: config audit (this version)
+> **All Rights Reserved.** See [LICENSE](LICENSE).
 
-`/ledger scan` reads every economy plugin's files and reports, from most to least urgent:
+## What it does
 
-| Check | What it finds |
+| Part | What it does |
 |---|---|
-| A1 | Items that sell for as much as (or more than) they cost in the same shop |
-| A2 | Items bought in one plugin and sold in another for profit (EconomyShopGUI, Lodestock, Virtual Spawner, HeadDatabase) |
-| A3 | Buy → craft/smelt/stonecut/smith → sell loops, using the server's real recipes |
-| A4 | Crafting that multiplies value, or makes unsellable ingredients sellable |
-| A5 | Items players make forever (generators, farms) sold above a fair price |
-| A6 | Spawner payback times, drops that sell higher elsewhere, price mismatches |
-| A7 | Every reward that pays money and a daily income estimate for a casual player and a grinder; money commands in any other plugin (so new reward plugins show up on their own) |
-| A8 | Reward commands that don't exist and crate keys that don't exist |
-| A9 | dkBank interest per tier at its cap, missing caps, alt limit |
-| A10 | OneBlock: money per block per phase, valuable fixed blocks with resets, valuable chest loot |
-| A11 | Every money sink, one-time or repeating |
-| A12 | Price changes since the last scan |
+| **Ledger** | Records every money change, wallet and bank, with the plugin that made it. New plugins are found automatically (call stack), nothing to hook by hand. |
+| **Money supply** | Every hour: total money (wallets + dkBank), money per active player, how much the richest 10% hold. |
+| **Alerts** (B1–B10) | Supply growth, one source making most new money, too few sinks, players far above the median, buy/sell loops, new money sources, big staff changes, wealth concentration, Lodestock price swings, alt transfers, big transfers. |
+| **Admin actions** | Freeze a player's outgoing money, staff notes, resolve alerts, undo one ledger entry (owners). |
+| **Config audit** (A1–A12) | `/ledger scan`: money loops, bad prices, crafting loops, spawner payback, reward income per day, broken commands, bank interest, OneBlock phases, sinks, price changes. |
+| **What if** | `/ledger whatif ...`: runs the audit with one change (price, spawner drop, spawner price, bank rate, reward size) and shows what it fixes, what it breaks and the 30-day money supply. Never edits a file. |
+| **Weekly report** | An HTML page with charts (and a Markdown copy) every week in `plugins/dkLedger/reports/`. |
+| **Menu** | `/ledger` in game: supply, alerts, sources, top earners, audit, frozen players, weekly report. |
+| **API** | `LedgerApi` and `LedgerAlertEvent` for the dk suite's Discord bot (see below). |
 
-Each scan writes a Markdown report to `plugins/dkLedger/reports/` (`latest.md` is always the newest).
-A scan also runs 30 seconds after startup; admins online get the summary if it finds something critical.
+### How money is recorded
 
-### Commands (permission `dkledger.admin`, ops by default)
+- **Vault**: dkLedger sits in front of the real economy (EssentialsX) and passes every call straight through. Successful deposits and withdrawals are recorded with the plugin that made them. It's registered in `onLoad` at the highest priority, so plugins get it when they look up the economy.
+- **EssentialsX**: `/eco` (from staff, the console, or other plugins' reward commands), `/pay`, `/sell` and direct API use. Changes already recorded through Vault aren't counted twice.
+- **dkBank**: every bank change. Deposits and withdrawals move money between a player's own wallet and bank (they only count as their fee); interest creates money; upgrades and fees remove it.
+
+Sources are plugin names, plus `staff:<name>`, `console`, `Essentials /pay`, `Essentials /sell`, `dkBank`, `dkBank transfers`,
+`dkBank interest`, `dkBank upgrades`. `ledger.transfer-sources` and `ledger.internal-sources` in config.yml say which
+ones move money between players or between a player's wallet and bank.
+
+## Commands
+
+`/ledger` (alias `/dkledger`). Permission `dkledger.admin` (ops), except `reverse`, which needs `dkledger.owner` (not given to ops).
 
 | Command | What it does |
 |---|---|
-| `/ledger scan` | Run the audit now (off the main thread) |
-| `/ledger findings [all\|critical\|warning\|info\|a1..a12] [page]` | List findings; hover a line for details and the fix |
-| `/ledger budget` | Daily reward income by source |
-| `/ledger report` | Where the full report is saved |
-| `/ledger reload` | Reload config.yml |
+| `/ledger` | The menu (players) or help (console) |
+| `/ledger supply` | Money supply now, 24h and 7-day change |
+| `/ledger sources [day\|week\|month]` | Money in and out by source |
+| `/ledger top [day\|week\|month]` | Top earners |
+| `/ledger player <name>` | A player's earnings, sources, newest entries (with ids) and staff notes |
+| `/ledger alerts [open\|all] [page]` / `resolve <id> [note]` | Alerts and resolving them |
+| `/ledger freeze <player> [reason]` / `unfreeze <player>` / `frozen` | Stop a player sending money to others |
+| `/ledger note <player> <text>` | A staff note |
+| `/ledger reverse <entry id>` | Undo one entry (asks to confirm) |
+| `/ledger scan` / `findings` / `budget` / `report` | The config audit |
+| `/ledger whatif <change>` | The simulator (type it alone for the options) |
+| `/ledger weekly` | Write the weekly report now |
+| `/ledger reload` | Reload config.yml and messages.yml |
 
-`dkledger.alerts` (ops by default): get the startup scan's summary when it finds critical problems.
-
-### Config
-
-`config.yml` has the plugin folder names, the casual and grinder profiles and every threshold, all commented.
+`dkledger.alerts` (ops): get alerts in chat.
 
 ## Build
 
+0. dkLedger compiles against three APIs from your local Maven repository. Run once (and again when they change):
+   - dkCore: `./gradlew publishToMavenLocal`
+   - dkBank: `./gradlew :api:publishToMavenLocal`
+   - Lodestock: `./gradlew :api:publishToMavenLocal`
+1. Open this folder in IntelliJ IDEA. Set Project SDK and Gradle JVM to **Java 25**.
+2. `./gradlew build` → `build/libs/dkLedger-<version>.jar` goes in `plugins/` next to dkCore. Runs the tests too.
+3. `./gradlew publishToMavenLocal` → lets the Discord bot compile against dkLedger's API.
+
+## For the Discord bot
+
+```kotlin
+compileOnly("com.direk:dkledger:0.2.0")
 ```
-./gradlew build          # jar in build/libs/dkLedger-<version>.jar, runs the tests
-./gradlew runPurpur      # local Purpur 26.3 test server with Vault, EssentialsX and dkLedger
+```yaml
+softdepend: [dkLedger]
 ```
+```java
+LedgerApi.find().ifPresent(ledger -> ledger.supply().thenAccept(s -> ...));
+
+@EventHandler
+public void onAlert(LedgerAlertEvent e) { /* post e.getAlert() to a channel */ }
+```
+`LedgerApi` has everything `/ledger` has: supply, sources, player summaries, alerts and resolving them, freeze,
+unfreeze, notes, reverse, scan and the simulator. Futures complete on the main thread.
+
+## Database
+
+dkCore's shared database, tables starting with `dkledger_`. Single entries are kept `ledger.keep-entries-days`
+(30); daily totals, snapshots and alerts are kept. IP addresses are never stored, only a salted hash
+(for the alt-transfer check), with the salt in `plugins/dkLedger/data/salt.txt`.
 
 ## Code layout
 
-- `audit/` — the checks. Plain Java, no Bukkit, so they run off the main thread and in unit tests.
-  - `read/` reads each plugin's files into a price book, spawner data and a scan of all plugin folders.
-  - `check/` the twelve checks. `report/` the Markdown report.
-- `platform/` — the Paper side: reading YAML with SnakeYAML, collecting recipes and commands.
-- `scan/`, `command/`, `config/` — running scans, `/ledger`, config.yml.
-
-## Roadmap
-
-1. ✅ Config audit
-2. Ledger (every transaction, by plugin), money supply snapshots, Discord webhook alerts
-3. Live detectors, weekly report with charts, GUI, "what if" simulator
-4. Discord bot with `/ledger` slash commands and admin actions
+- `audit/` — the config audit (plain Java, no Bukkit, tested). `whatif/` — the simulator on top of it.
+- `ledger/` — recording: the Vault proxy and EssentialsX/dkBank hooks in `hook/`, source attribution, storage.
+- `supply/`, `detect/` — snapshots, the live and hourly checks, alerts.
+- `admin/` — freeze, logins, and `LedgerActions` (shared by commands, menus and the API).
+- `report/`, `gui/`, `command/`, `config/`, `api/`.

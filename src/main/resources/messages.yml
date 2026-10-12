@@ -1,0 +1,139 @@
+# ============================================
+#  dkLedger - messages (MiniMessage format)
+#  Author: direk james
+# ============================================
+# <prefix> inserts the prefix below. Set a message to '' to not send it.
+# Words in <angle brackets> like <player> or <amount> are filled in by the plugin.
+
+prefix: '<dark_gray>[<gradient:#f5c542:#e8833a>dkLedger</gradient><dark_gray>]<reset> '
+
+# Needed by dkCore's command system
+no-permission: '<prefix><red>You don''t have permission to do that.'
+player-only: '<prefix><red>Only players can use this command.'
+unknown-player: '<prefix><red>Player <white><player></white> has never joined this server.'
+
+usage: '<prefix><red>Usage: <white><usage>'
+error: '<prefix><red><error>'
+reloaded: '<prefix><green>config.yml and messages.yml reloaded.'
+reload-warning: '<prefix><yellow><warning>'
+header: '<dark_gray>— <gold><bold><title></bold></gold> —'
+line: '<gray><text>'
+nothing: '<gray>  Nothing here yet.'
+
+help:
+  - '<dark_gray>— <gold><bold>dkLedger</bold></gold> <gray>v<version></gray> —'
+  - '<gold>/ledger</gold> <gray>- the menu'
+  - '<gold>/ledger supply</gold> <gray>- money supply now and its trend'
+  - '<gold>/ledger sources [day|week|month]</gold> <gray>- where money comes from and goes'
+  - '<gold>/ledger top [day|week|month]</gold> <gray>- top earners'
+  - '<gold>/ledger player <name></gold> <gray>- a player''s money history'
+  - '<gold>/ledger alerts [open|all]</gold> <gray>- alerts; <gold>/ledger resolve <id> [note]</gold>'
+  - '<gold>/ledger freeze|unfreeze <player> [reason]</gold> <gray>- stop a player sending money; <gold>/ledger frozen'
+  - '<gold>/ledger note <player> <text></gold> <gray>- a staff note on a player'
+  - '<gold>/ledger reverse <entry id></gold> <gray>- undo one entry (owners)'
+  - '<gold>/ledger scan</gold> <gray>- audit every economy plugin''s config; <gold>/ledger findings</gold>, <gold>/ledger budget'
+  - '<gold>/ledger whatif <change></gold> <gray>- simulate a change (type it for the options)'
+  - '<gold>/ledger weekly</gold> <gray>- write the weekly report now; <gold>/ledger report</gold> <gray>- where reports are'
+  - '<gold>/ledger reload</gold> <gray>- reload the config'
+
+scan:
+  started: '<prefix><gray>Scanning every economy plugin...'
+  busy: '<prefix><yellow>A scan is already running.'
+  failed: '<prefix><red>The scan failed. See the console.'
+  none-yet: '<prefix><gray>No scan yet. Run <click:run_command:/ledger scan><aqua>[/ledger scan]</aqua></click>.'
+  # <path> can be clicked to copy it.
+  report: '<prefix><gray>Full report: <path> <gray>(also latest.md).'
+
+supply:
+  none: '<prefix><gray>No money supply snapshot yet. The first one is taken a minute after startup.'
+  lines:
+    - '<dark_gray>— <gold><bold>Money supply</bold></gold> —'
+    - '<gray>Total <white><bold><total></bold></white> <dark_gray>(wallets <wallet>, banks <bank>)'
+    - '<gray>24 hours: <change24h>  <dark_gray>|</dark_gray>  7 days: <change7d>'
+    - '<gray>Per active player: <white><per-active></white>  <dark_gray>|</dark_gray>  richest 10% hold <white><top-share>'
+    - '<dark_gray>Counted <age> ago.'
+
+sources:
+  header: '<dark_gray>— <gold><bold>Money by source</bold></gold> <gray>(<period>)</gray> —'
+  # <name> is green for faucets, red for sinks.
+  line: '<name> <dark_gray><kind></dark_gray> <gray>in <white><in></white> out <white><out></white> net <net>'
+  footer: '<dark_gray>Faucets add money, sinks remove it. Transfers move it between players.'
+
+top:
+  header: '<dark_gray>— <gold><bold>Top earners</bold></gold> <gray>(<period>)</gray> —'
+  # <player> can be clicked to see their history.
+  line: '<gray><rank>. <player> <gray>earned <green><earned></green>, spent <red><spent>'
+
+player:
+  header: '<dark_gray>— <gold><bold><name></bold></gold> —'
+  earned: '<gray>Earned today <green><today></green>, last 7 days <green><week></green>'
+  frozen: '<red>Frozen: <white><reason>'
+  sources-title: '<gold>Last 7 days by source:'
+  source: '<gray>  <name>: <green>+<in></green> <red>-<out>'
+  recent-title: '<gold>Newest entries:'
+  entry: '<gray>  <text>'
+  notes-title: '<gold>Staff notes:'
+  note: '<gray>  <text>'
+
+alerts:
+  header: '<dark_gray>— <gold><bold>Alerts</bold></gold> <gray>(<filter>, page <page>/<pages>)</gray> —'
+  # <title> shows the details on hover.
+  line-critical: '<red>■</red> <dark_gray>#<id> <check></dark_gray> <title> <dark_gray><time><resolved>'
+  line-warning: '<yellow>■</yellow> <dark_gray>#<id> <check></dark_gray> <title> <dark_gray><time><resolved>'
+  line-info: '<aqua>■</aqua> <dark_gray>#<id> <check></dark_gray> <title> <dark_gray><time><resolved>'
+  resolved-tag: ' (resolved by <by>)'
+  resolved: '<prefix><green>Alert #<id> resolved.'
+  not-found: '<prefix><red>No open alert #<id>.'
+
+alert:
+  # <details> is a button: hover shows the numbers, click opens /ledger alerts.
+  notify-critical: '<prefix><red><bold>CRITICAL</bold></red> <dark_gray>[<check>]</dark_gray> <white><title></white> <details>'
+  notify-warning: '<prefix><yellow>Warning</yellow> <dark_gray>[<check>]</dark_gray> <white><title></white> <details>'
+  notify-info: '<prefix><aqua>Info</aqua> <dark_gray>[<check>]</dark_gray> <white><title></white> <details>'
+
+freeze:
+  done: '<prefix><green><player> is frozen: they can''t send money to other players until unfrozen.'
+  undone: '<prefix><green><player> is no longer frozen.'
+  not-frozen: '<prefix><yellow><player> wasn''t frozen.'
+  list-header: '<dark_gray>— <gold><bold>Frozen players</bold></gold> —'
+  # <player> can be clicked to see their history.
+  list-line: '<player> <dark_gray>since <since> by <by>:</dark_gray> <gray><reason>'
+  you-are-frozen: '<prefix><red>Staff froze your money: you can''t send money to other players for now. You can still play, earn and buy.'
+  you-are-unfrozen: '<prefix><green>Staff unfroze your money.'
+  blocked: '<prefix><red>Your money is frozen by staff, so you can''t send it to others right now.'
+
+note:
+  added: '<prefix><green>Note added to <player>.'
+
+reverse:
+  # <confirm> is a button that runs /ledger reverse <id> confirm.
+  confirm: '<prefix><yellow>Undo entry #<id> (<text>)? <confirm>'
+  result: '<prefix><white><text>'
+
+whatif:
+  started: '<prefix><gray>Simulating... (nothing is changed in any file)'
+  usage:
+    - '<prefix><gray>Simulate a change without touching any file:'
+    - '<gold>/ledger whatif price <MATERIAL> <buy|sell> <amount> [plugin]'
+    - '<gold>/ledger whatif spawner <MOB> <MATERIAL> <drop price>'
+    - '<gold>/ledger whatif spawnerprice <MOB> <price>'
+    - '<gold>/ledger whatif bank <tier> <online|offline|cap> <value>'
+    - '<gold>/ledger whatif reward <name> <multiplier></gold> <gray>(e.g. afk_zone 0.5)'
+  title: '<gold><text>'
+  good: '<green><text>'
+  bad: '<red><text>'
+  changed: '<white><text>'
+  plain: '<gray><text>'
+
+weekly:
+  started: '<prefix><gray>Writing the weekly report...'
+  # <path> can be clicked to copy it.
+  done: '<prefix><green>Weekly report written: <path>'
+  failed: '<prefix><red>Couldn''t write the weekly report. See the console.'
+
+menu:
+  title: '<dark_gray>dkLedger'
+  sources-title: '<dark_gray>dkLedger · Sources (<period>)'
+  alerts-title: '<dark_gray>dkLedger · Alerts'
+  top-title: '<dark_gray>dkLedger · Top earners (7 days)'
+  frozen-title: '<dark_gray>dkLedger · Frozen players'
