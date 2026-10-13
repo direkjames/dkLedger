@@ -21,6 +21,7 @@ Server: **Purpur 26.3**, Java **25**. Package: `com.direk.dkledger`. Built on **
 | **What if** | `/ledger whatif ...`: runs the audit with one change (price, spawner drop, spawner price, bank rate, reward size) and shows what it fixes, what it breaks and the 30-day money supply. Never edits a file. |
 | **Weekly report** | An HTML page with charts (and a Markdown copy) every week in `plugins/dkLedger/reports/`. |
 | **Menu** | `/ledger` in game: supply, alerts, sources, top earners, audit, frozen players, weekly report. |
+| **Login summary** | Staff get a few lines when they join: money change, new alerts, new money sources, freezes and new players since they left. Only when something deserves a look. |
 | **Web dashboard** | A read-only website: money supply chart, sources, top earners, alerts, items, reasons, player lookup. Sign in with `/ledger web`. |
 | **API** | `LedgerApi` and `LedgerAlertEvent` for the dk suite's Discord bot (see below). |
 
@@ -55,9 +56,10 @@ ones move money between players or between a player's wallet and bank.
 | `/ledger whatif <change>` | The simulator (type it alone for the options) |
 | `/ledger weekly` | Write the weekly report now |
 | `/ledger reload` | Reload config.yml and messages.yml |
+| `/ledger summary [now\|mute\|off\|on]` | The "while you were away" summary now; mute it for today; turn it off or on for yourself |
 | `/ledger web` / `web logout` | A one-time sign-in link for the web dashboard / sign everyone out |
 
-`dkledger.alerts` (ops): get alerts in chat.
+`dkledger.alerts` (ops): get alerts in chat. `dkledger.summary` (ops): get the login summary.
 
 ## Web dashboard
 
@@ -92,7 +94,7 @@ strict Content-Security-Policy (no outside scripts), no caching, sessions in mem
 ## For the Discord bot
 
 ```kotlin
-compileOnly("com.direk:dkledger:0.4.0")
+compileOnly("com.direk:dkledger:0.5.0")
 ```
 ```yaml
 softdepend: [dkLedger]

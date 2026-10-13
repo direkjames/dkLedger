@@ -30,11 +30,12 @@ import java.util.Map;
  * @param weekly          the weekly report
  * @param tracking        what's recorded besides money: item trades, playtime, progress
  * @param web             the web dashboard
+ * @param loginSummary    the "while you were away" summary for staff
  * @param warnings        problems found in config.yml (shown on startup and reload)
  */
 public record LedgerConfig(ZoneId zone, boolean scanOnStartup, int startupDelay, int keepReports, AuditSettings audit,
                            Ledger ledger, Thresholds thresholds, Alerts alerts, Freeze freeze, Weekly weekly,
-                           Tracking tracking, Web web, List<String> warnings) {
+                           Tracking tracking, Web web, LoginSummary loginSummary, List<String> warnings) {
 
     /**
      * @param enabled          record money changes
@@ -75,6 +76,15 @@ public record LedgerConfig(ZoneId zone, boolean scanOnStartup, int startupDelay,
      * @param sessionHours how long a sign-in lasts
      * @param trustProxy   behind Cloudflare or a reverse proxy: read the visitor's address from its headers
      */
+    /**
+     * @param enabled      send it
+     * @param delaySeconds wait this long after a staff member joins
+     * @param minChange    the money supply change that's worth mentioning on its own (0.05 = 5%)
+     * @param maxDays      look back at most this many days
+     */
+    public record LoginSummary(boolean enabled, int delaySeconds, double minChange, int maxDays) {
+    }
+
     public record Web(boolean enabled, String bind, int port, String publicUrl, int sessionHours, boolean trustProxy) {
     }
 
@@ -204,8 +214,12 @@ public record LedgerConfig(ZoneId zone, boolean scanOnStartup, int startupDelay,
         Web web = new Web(c.getBoolean("web.enabled", false), c.getString("web.bind", "0.0.0.0"), port, url == null ? "" : url,
                 Math.max(1, c.getInt("web.session-hours", 12)), c.getBoolean("web.trust-proxy", false));
 
+        LoginSummary summary = new LoginSummary(c.getBoolean("login-summary.enabled", true),
+                Math.max(0, c.getInt("login-summary.delay-seconds", 5)), Math.max(0, c.getDouble("login-summary.min-change", 0.05)),
+                Math.max(1, c.getInt("login-summary.max-days", 7)));
+
         return new LedgerConfig(zone, c.getBoolean("scan.on-startup", true), Math.max(0, c.getInt("scan.startup-delay-seconds", 30)),
-                Math.max(1, c.getInt("scan.keep-reports", 20)), a, ledger, t, alerts, freeze, weekly, tracking, web, List.copyOf(warnings));
+                Math.max(1, c.getInt("scan.keep-reports", 20)), a, ledger, t, alerts, freeze, weekly, tracking, web, summary, List.copyOf(warnings));
     }
 
     private static List<String> paths(YamlConfiguration c, String key, List<String> fallback) {

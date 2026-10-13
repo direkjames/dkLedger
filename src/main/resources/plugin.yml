@@ -21,6 +21,7 @@ permissions:
     default: op
     children:
       dkledger.alerts: true
+      dkledger.summary: true
   dkledger.owner:
     description: Undo ledger entries (/ledger reverse). Not given to ops on purpose.
     default: false
@@ -28,4 +29,7 @@ permissions:
       dkledger.admin: true
   dkledger.alerts:
     description: Get economy alerts in chat when they happen.
+    default: op
+  dkledger.summary:
+    description: Get a short "while you were away" economy summary when joining.
     default: op

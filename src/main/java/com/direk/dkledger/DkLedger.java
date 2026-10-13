@@ -71,6 +71,7 @@ public final class DkLedger extends DkPlugin {
     private PlaytimeService playtime;
     private ProgressService progress;
     private com.direk.dkledger.web.WebServer web;
+    private com.direk.dkledger.summary.LoginSummary summary;
     private Menus menus;
     private LedgerCommand command;
     private final List<String> hooks = new ArrayList<>();
@@ -122,6 +123,7 @@ public final class DkLedger extends DkPlugin {
         playtime = new PlaytimeService(this, store);
         progress = new ProgressService(this, store);
         web = new com.direk.dkledger.web.WebServer(this);
+        summary = new com.direk.dkledger.summary.LoginSummary(this, store);
         Sources rules = new Sources(config.ledger().transferSources(), config.ledger().internalSources());
         watch = new LiveWatch(rules, config.thresholds(), config.zone(), logins::of);
         applyConfig();
@@ -130,7 +132,7 @@ public final class DkLedger extends DkPlugin {
             proxy.recorder(ledger);
             hooks.add("Vault");
         }
-        listen(tracker, freezes, logins, playtime, new ServerListener());
+        listen(tracker, freezes, logins, playtime, summary, new ServerListener());
         if (Bukkit.getPluginManager().isPluginEnabled("Essentials")) hook("Essentials", () -> listen(new com.direk.dkledger.ledger.hook.EssentialsHook(ledger)));
         if (Bukkit.getPluginManager().isPluginEnabled("dkBank")) {
             hook("dkBank", () -> listen(new com.direk.dkledger.ledger.hook.DkBankHook(ledger, freezes)));
@@ -187,6 +189,7 @@ public final class DkLedger extends DkPlugin {
         items.configure(c.tracking().items(), c.zone());
         playtime.configure(c.tracking().playtime(), c.tracking().afkAfterMinutes(), c.zone());
         progress.configure(c.tracking().progress());
+        summary.configure(c.loginSummary().enabled(), c.loginSummary().delaySeconds(), c.loginSummary().minChange(), c.loginSummary().maxDays());
         tasks().cancelAll();
         tasks().timer(() -> {
             ledger.flush();
@@ -333,6 +336,7 @@ public final class DkLedger extends DkPlugin {
     public ProgressService progress() { return progress; }
     public com.direk.dkledger.web.WebServer web() { return web; }
     public LedgerStore store() { return store; }
+    public com.direk.dkledger.summary.LoginSummary summary() { return summary; }
 
     /** The Vault proxy, or null when Vault isn't installed. */
     public VaultProxy vault() {

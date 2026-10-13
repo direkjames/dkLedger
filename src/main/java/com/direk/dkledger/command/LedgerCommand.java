@@ -71,6 +71,7 @@ public final class LedgerCommand extends DkCommand {
         sub(new Simple("weekly", this::weekly));
         sub(new Simple("reload", this::reload));
         sub(new WebSub());
+        sub(new SummarySub());
     }
 
     @Override
@@ -301,6 +302,38 @@ public final class LedgerCommand extends DkCommand {
 
     private static String hours(int minutes) {
         return minutes < 60 ? minutes + " min" : String.format(Locale.US, "%.1f h", minutes / 60.0);
+    }
+
+    // ------------------------------------------------------------------ login summary
+
+    private final class SummarySub extends SubCommand {
+        SummarySub() {
+            super("summary", ADMIN, false, "away");
+        }
+
+        @Override
+        public void execute(CommandSender sender, String[] args) {
+            String what = args.length > 0 ? args[0].toLowerCase(Locale.ROOT) : "now";
+            if (what.equals("now")) {
+                plugin.summary().showNow(sender);
+                return;
+            }
+            if (!(sender instanceof Player p)) {
+                messages.send(sender, "player-only");
+                return;
+            }
+            switch (what) {
+                case "mute" -> plugin.summary().mute(p);
+                case "off" -> plugin.summary().setEnabled(p, false);
+                case "on" -> plugin.summary().setEnabled(p, true);
+                default -> messages.send(sender, "usage", Messages.text("usage", "/ledger summary [now|mute|off|on]"));
+            }
+        }
+
+        @Override
+        public List<String> tab(CommandSender sender, String[] args) {
+            return args.length == 1 ? List.of("now", "mute", "off", "on") : List.of();
+        }
     }
 
     // ------------------------------------------------------------------ web dashboard

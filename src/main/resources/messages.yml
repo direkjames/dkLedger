@@ -36,6 +36,7 @@ help:
   - '<gold>/ledger scan</gold> <gray>- audit every economy plugin''s config; <gold>/ledger findings</gold>, <gold>/ledger budget'
   - '<gold>/ledger whatif <change></gold> <gray>- simulate a change (type it for the options)'
   - '<gold>/ledger weekly</gold> <gray>- write the weekly report now; <gold>/ledger report</gold> <gray>- where reports are'
+  - '<gold>/ledger summary [now|mute|off|on]</gold> <gray>- what changed while you were away; mute for today, or turn it off/on'
   - '<gold>/ledger web</gold> <gray>- a sign-in link for the web dashboard; <gold>/ledger web logout</gold> <gray>signs everyone out'
   - '<gold>/ledger reload</gold> <gray>- reload the config'
 
@@ -163,3 +164,17 @@ web:
   console: '<prefix><gray>Dashboard sign-in (works once, for 5 minutes): <white><link>'
   off: '<prefix><yellow>The web dashboard is off. Set web.enabled: true in config.yml, then /ledger reload.'
   logged-out: '<prefix><green>Signed everyone out of the dashboard (<count> session(s)). Old sign-in links no longer work.'
+
+summary:
+  header: '<prefix><gray>While you were away <dark_gray>(<away>)</dark_gray>:'
+  # <change> is the money supply change since then, yellow when it's big.
+  money: '<gray> Money: <white><total></white> <change> <dark_gray>·</dark_gray> created <white><created></white>, removed <white><removed>'
+  # <criticals> says how many are critical; <view> is a button to /ledger alerts.
+  alerts: '<gray> <yellow>⚠</yellow> <white><count></white> new alert(s)<criticals>: <white><title></white> <view>'
+  news: '<gray> <text>'
+  # <buttons>: open the dashboard (when it's on) and dismiss for today.
+  buttons: ' <buttons>'
+  nothing: '<prefix><gray>Nothing new in the economy in the last <away>.'
+  muted: '<prefix><gray>No summary until tomorrow.'
+  off: '<prefix><gray>The login summary is off for you. <white>/ledger summary on</white> turns it back on.'
+  on: '<prefix><green>The login summary is on for you.'

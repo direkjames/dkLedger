@@ -132,6 +132,13 @@ public final class WebServer {
         try (ex) {
             security(ex.getResponseHeaders());
             String path = ex.getRequestURI().getPath();
+            // Behind an HTTPS proxy, a visit straight to the port (plain http) is sent to the https address.
+            if (trustProxy && secureCookie && !"https".equalsIgnoreCase(ex.getRequestHeaders().getFirst("X-Forwarded-Proto"))
+                    && ex.getRequestHeaders().getFirst("CF-Connecting-IP") == null) {
+                ex.getResponseHeaders().set("Location", publicUrl + (path.startsWith("/") ? path : "/"));
+                ex.sendResponseHeaders(301, -1);
+                return;
+            }
             String method = ex.getRequestMethod().toUpperCase(Locale.ROOT);
             if (path.equals("/logout") && method.equals("POST")) {
                 if (!sameOrigin(ex)) {
@@ -317,7 +324,9 @@ public final class WebServer {
 
     private String client(HttpExchange ex) {
         if (trustProxy) {
+            // X-Real-IP is set by nginx itself (a visitor can't fake it through the proxy); X-Forwarded-For is the fallback.
             String forwarded = ex.getRequestHeaders().getFirst("CF-Connecting-IP");
+            if (forwarded == null) forwarded = ex.getRequestHeaders().getFirst("X-Real-IP");
             if (forwarded == null) forwarded = ex.getRequestHeaders().getFirst("X-Forwarded-For");
             if (forwarded != null && !forwarded.isBlank()) return forwarded.split(",")[0].strip();
         }

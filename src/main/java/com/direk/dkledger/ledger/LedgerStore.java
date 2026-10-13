@@ -45,6 +45,7 @@ public final class LedgerStore {
     public static final String PLAYERS = "dkledger_players";
     public static final String PLAYTIME = "dkledger_playtime";
     public static final String EVENTS = "dkledger_events";
+    public static final String STAFF = "dkledger_staff";
 
     private final Database db;
 
@@ -128,6 +129,8 @@ public final class LedgerStore {
                 + "first_join BIGINT NOT NULL, first_tracked BIGINT NOT NULL, last_seen BIGINT NOT NULL)");
         sql.add("CREATE TABLE IF NOT EXISTS " + PLAYTIME + " (day VARCHAR(10) NOT NULL, uuid VARCHAR(36) NOT NULL, "
                 + "active_minutes INT NOT NULL, afk_minutes INT NOT NULL, sessions INT NOT NULL, PRIMARY KEY (day, uuid))");
+        sql.add("CREATE TABLE IF NOT EXISTS " + STAFF + " (uuid VARCHAR(36) NOT NULL PRIMARY KEY, last_quit BIGINT NOT NULL, "
+                + "muted_until BIGINT NOT NULL, enabled INT NOT NULL)");
         return db.createTables(sql).thenCompose(v -> migrate());
     }
 
@@ -936,6 +939,87 @@ public final class LedgerStore {
                 }
             }
             return out;
+        });
+    }
+
+    // ------------------------------------------------------------------ staff (login summary)
+
+    /**
+     * A staff member's login summary settings.
+     *
+     * @param lastQuit   when they last left (0 = never seen)
+     * @param mutedUntil no summary before this time
+     * @param enabled    false if they turned the summary off
+     */
+    public record Staff(UUID uuid, long lastQuit, long mutedUntil, boolean enabled) {
+    }
+
+    public CompletableFuture<Staff> staff(UUID uuid) {
+        return db.query(c -> {
+            try (PreparedStatement ps = c.prepareStatement("SELECT last_quit, muted_until, enabled FROM " + STAFF + " WHERE uuid = ?")) {
+                ps.setString(1, uuid.toString());
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) return new Staff(uuid, rs.getLong(1), rs.getLong(2), rs.getInt(3) != 0);
+                }
+            }
+            return new Staff(uuid, 0, 0, true);
+        });
+    }
+
+    public CompletableFuture<Void> saveStaff(Staff s) {
+        return db.execute(c -> {
+            try (PreparedStatement del = c.prepareStatement("DELETE FROM " + STAFF + " WHERE uuid = ?")) {
+                del.setString(1, s.uuid().toString());
+                del.executeUpdate();
+            }
+            try (PreparedStatement ps = c.prepareStatement("INSERT INTO " + STAFF + " (uuid, last_quit, muted_until, enabled) VALUES (?, ?, ?, ?)")) {
+                ps.setString(1, s.uuid().toString());
+                ps.setLong(2, s.lastQuit());
+                ps.setLong(3, s.mutedUntil());
+                ps.setInt(4, s.enabled() ? 1 : 0);
+                ps.executeUpdate();
+            }
+        });
+    }
+
+    /** Money in and out per source since a time, from single entries: source -> {gained, lost}. */
+    public CompletableFuture<Map<String, double[]>> sourcesSince(long since) {
+        return db.query(c -> {
+            Map<String, double[]> out = new LinkedHashMap<>();
+            try (PreparedStatement ps = c.prepareStatement("SELECT source, SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END), "
+                    + "SUM(CASE WHEN amount < 0 THEN -amount ELSE 0 END) FROM " + ENTRIES + " WHERE time >= ? GROUP BY source")) {
+                ps.setLong(1, since);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) out.put(rs.getString(1), new double[]{rs.getDouble(2), rs.getDouble(3)});
+                }
+            }
+            return out;
+        });
+    }
+
+    /** Sources that moved money for the first time since a time. */
+    public CompletableFuture<List<String>> newSourcesSince(long since) {
+        return db.query(c -> {
+            List<String> out = new ArrayList<>();
+            try (PreparedStatement ps = c.prepareStatement("SELECT source FROM " + SOURCES + " WHERE first_seen >= ? ORDER BY first_seen")) {
+                ps.setLong(1, since);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) out.add(rs.getString(1));
+                }
+            }
+            return out;
+        });
+    }
+
+    /** Players whose first join was since a time. */
+    public CompletableFuture<Integer> newPlayersSince(long since) {
+        return db.query(c -> {
+            try (PreparedStatement ps = c.prepareStatement("SELECT COUNT(*) FROM " + PLAYERS + " WHERE first_join >= ?")) {
+                ps.setLong(1, since);
+                try (ResultSet rs = ps.executeQuery()) {
+                    return rs.next() ? rs.getInt(1) : 0;
+                }
+            }
         });
     }
 
